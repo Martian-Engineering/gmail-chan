@@ -82,4 +82,30 @@ describe("pollGmailOnce", () => {
     ).rejects.toThrow("dispatch failed");
     expect(markMessageRead).not.toHaveBeenCalled();
   });
+
+  it("marks a structurally invalid Gmail message read without dispatching", async () => {
+    const markMessageRead = vi.fn(async () => undefined);
+    const client = new GmailClient({
+      listMessages: vi.fn(async () => ({
+        messages: [{ id: "message-1", threadId: "thread-1" }],
+      })),
+      getMessage: vi.fn(async () => ({ threadId: "thread-1" })),
+      getThread: vi.fn(),
+      getAttachment: vi.fn(),
+      markMessageRead,
+      sendMessage: vi.fn(),
+    });
+    const dispatch = vi.fn();
+
+    await pollGmailOnce({
+      account,
+      cfg: {} as GmailCoreConfig,
+      client,
+      runtime: {} as PluginRuntime,
+      dispatch,
+    });
+
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(markMessageRead).toHaveBeenCalledWith("message-1");
+  });
 });

@@ -5,7 +5,11 @@ import {
   type GmailCoreConfig,
   type ResolvedGmailAccount,
 } from "./accounts.js";
-import { createGmailClient, type GmailClient } from "./gmail-client.js";
+import {
+  createGmailClient,
+  InvalidGmailMessageError,
+  type GmailClient,
+} from "./gmail-client.js";
 import { handleGmailInbound, type GmailInboundDisposition } from "./inbound.js";
 
 const activeMessages = new Set<string>();
@@ -28,7 +32,16 @@ export async function pollGmailOnce(params: {
     }
     activeMessages.add(key);
     try {
-      const message = await params.client.getMessage(messageId);
+      let message;
+      try {
+        message = await params.client.getMessage(messageId);
+      } catch (error) {
+        if (error instanceof InvalidGmailMessageError) {
+          await params.client.markMessageRead(messageId);
+          continue;
+        }
+        throw error;
+      }
       await dispatch({
         account: params.account,
         cfg: params.cfg,

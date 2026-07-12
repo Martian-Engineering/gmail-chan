@@ -34,6 +34,14 @@ export class GmailAttachmentTooLargeError extends Error {
   }
 }
 
+/** Error raised when Gmail returns a structurally invalid message resource. */
+export class InvalidGmailMessageError extends Error {
+  public constructor(cause: unknown) {
+    super("Invalid Gmail message response", { cause });
+    this.name = "InvalidGmailMessageError";
+  }
+}
+
 export type GmailApi = {
   listMessages: () => Promise<unknown>;
   getMessage: (messageId: string) => Promise<unknown>;
@@ -68,9 +76,7 @@ export class GmailClient {
       await this.#api.getMessage(messageId),
     );
     if (!result.success) {
-      throw new Error("Invalid Gmail message response", {
-        cause: result.error,
-      });
+      throw new InvalidGmailMessageError(result.error);
     }
     return result.data;
   }

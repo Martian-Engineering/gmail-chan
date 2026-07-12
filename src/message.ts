@@ -17,10 +17,7 @@ const GmailHeaderSchema = z.object({
 });
 
 const GmailBodySchema = z.object({
-  data: z
-    .string()
-    .max(14 * 1024 * 1024)
-    .optional(),
+  data: z.string().optional(),
   attachmentId: z.string().max(1024).optional(),
   size: z.number().int().nonnegative().optional(),
 });
