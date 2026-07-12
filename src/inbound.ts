@@ -2,7 +2,7 @@ import type { OpenClawConfig } from "openclaw/plugin-sdk/channel-core";
 import type { PluginRuntime } from "openclaw/plugin-sdk/runtime-store";
 import type { GmailCoreConfig, ResolvedGmailAccount } from "./accounts.js";
 import type { GmailApiMessage } from "./message.js";
-import { parseGmailMessage } from "./message.js";
+import { parseGmailMessage, parseGmailMessageEnvelope } from "./message.js";
 import { isAddressAllowed } from "./policy.js";
 import { buildGmailThreadTarget } from "./target.js";
 
@@ -15,13 +15,17 @@ export async function handleGmailInbound(params: {
   message: GmailApiMessage;
   runtime: PluginRuntime;
 }): Promise<GmailInboundDisposition> {
-  const message = parseGmailMessage(params.message);
+  // Apply sender policy before decoding untrusted MIME content or invoking an
+  // agent. A sender must be eligible for both admission and the reply path.
+  const envelope = parseGmailMessageEnvelope(params.message);
   if (
-    message.senderEmail === params.account.email ||
-    !isAddressAllowed(message.senderEmail, params.account.allowFrom)
+    envelope.senderEmail === params.account.email ||
+    !isAddressAllowed(envelope.senderEmail, params.account.allowFrom) ||
+    !isAddressAllowed(envelope.senderEmail, params.account.allowTo)
   ) {
     return "ignored";
   }
+  const message = parseGmailMessage(params.message);
 
   // A Gmail thread is a channel peer so DM scope cannot merge distinct threads.
   const target = buildGmailThreadTarget(message.threadId);

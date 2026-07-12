@@ -130,4 +130,35 @@ describe("handleGmailInbound", () => {
     ).resolves.toBe("ignored");
     expect(dispatchReply).not.toHaveBeenCalled();
   });
+
+  it("does not dispatch when the sender cannot receive a reply", async () => {
+    const { runtime, dispatchReply } = createRuntime();
+
+    await expect(
+      handleGmailInbound({
+        account: { ...account, allowTo: [] },
+        cfg,
+        message: gmailMessage("message-1", "thread-1", "person@example.com"),
+        runtime,
+      }),
+    ).resolves.toBe("ignored");
+    expect(dispatchReply).not.toHaveBeenCalled();
+  });
+
+  it("classifies denied senders before parsing unsupported MIME bodies", async () => {
+    const { runtime, dispatchReply } = createRuntime();
+    const unsupported = {
+      id: "message-1",
+      threadId: "thread-1",
+      payload: {
+        mimeType: "application/pdf",
+        headers: [{ name: "From", value: "outside@example.net" }],
+      },
+    };
+
+    await expect(
+      handleGmailInbound({ account, cfg, message: unsupported, runtime }),
+    ).resolves.toBe("ignored");
+    expect(dispatchReply).not.toHaveBeenCalled();
+  });
 });

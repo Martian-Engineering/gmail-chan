@@ -46,6 +46,23 @@ export const GmailApiMessageSchema = z.object({
 
 export type GmailApiMessage = z.infer<typeof GmailApiMessageSchema>;
 
+const GmailMessageEnvelopeSchema = z.object({
+  id: z.string().min(1),
+  threadId: z.string().min(1),
+  internalDate: z.string().regex(/^\d+$/u).optional().nullable(),
+  payload: z.object({
+    headers: z.array(GmailHeaderSchema).optional().nullable(),
+  }),
+});
+
+export type GmailMessageEnvelope = {
+  id: string;
+  threadId: string;
+  senderEmail: string;
+  senderName?: string;
+  timestampMs?: number;
+};
+
 export type ParsedGmailMessage = {
   id: string;
   threadId: string;
@@ -143,6 +160,24 @@ function parseSender(value: string | undefined): {
   return { email, ...(name ? { name } : {}) };
 }
 
+/** Reads routing and policy metadata without parsing the MIME body. */
+export function parseGmailMessageEnvelope(
+  input: unknown,
+): GmailMessageEnvelope {
+  const message = GmailMessageEnvelopeSchema.parse(input);
+  const sender = parseSender(getHeader(message.payload, "From"));
+  const timestampMs = message.internalDate
+    ? Number(message.internalDate)
+    : undefined;
+  return {
+    id: message.id,
+    threadId: message.threadId,
+    senderEmail: sender.email,
+    ...(sender.name ? { senderName: sender.name } : {}),
+    ...(timestampMs !== undefined ? { timestampMs } : {}),
+  };
+}
+
 /** Validates and converts one Gmail API message into bounded text for OpenClaw. */
 export function parseGmailMessage(
   input: unknown,
@@ -160,22 +195,21 @@ export function parseGmailMessage(
     throw new Error("Gmail message has no supported text body");
   }
   const decoded = decodeBody(bodyData, maxBodyBytes);
-  const sender = parseSender(getHeader(message.payload, "From"));
-  const timestampMs = message.internalDate
-    ? Number(message.internalDate)
-    : undefined;
+  const envelope = parseGmailMessageEnvelope(message);
   const messageIdHeader = getHeader(message.payload, "Message-ID");
   const references = getHeader(message.payload, "References");
   return {
     id: message.id,
     threadId: message.threadId,
-    senderEmail: sender.email,
-    ...(sender.name ? { senderName: sender.name } : {}),
+    senderEmail: envelope.senderEmail,
+    ...(envelope.senderName ? { senderName: envelope.senderName } : {}),
     subject: getHeader(message.payload, "Subject")?.trim() ?? "",
     ...(messageIdHeader ? { messageIdHeader } : {}),
     ...(references ? { references } : {}),
     text: bodies.plain ? decoded.trim() : htmlToText(decoded),
-    ...(timestampMs !== undefined ? { timestampMs } : {}),
+    ...(envelope.timestampMs !== undefined
+      ? { timestampMs: envelope.timestampMs }
+      : {}),
   };
 }
 
