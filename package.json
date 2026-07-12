@@ -47,6 +47,7 @@
     }
   },
   "dependencies": {
+    "@googleapis/gmail": "17.0.0",
     "zod": "4.4.3"
   },
   "devDependencies": {
