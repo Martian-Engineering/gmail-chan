@@ -7,9 +7,9 @@ conversations. Each Gmail thread maps to one OpenClaw session. Messages in the
 same thread reuse that session, and messages in different threads use different
 sessions.
 
-The first milestone supports text email through the Gmail API. It polls unread
-inbox messages, applies sender policy, dispatches admitted messages to OpenClaw,
-and sends the agent's response as a reply in the source Gmail thread.
+The plugin polls unread inbox messages, applies sender and recipient policy,
+dispatches admitted messages and attachments to OpenClaw, and sends the agent's
+response to all permitted participants in the source Gmail thread.
 
 ## Tech Stack
 
@@ -55,6 +55,7 @@ src/message.ts           MIME parsing and construction
 src/policy.ts            Inbound and outbound address policy
 src/runtime.ts           Host-provided runtime store
 src/target.ts            Gmail target grammar
+src/thread-context.ts    Outbound-created thread opener state
 tests/                   Cross-module and contract tests
 docs/                    Specification and implementation plan
 ```
@@ -122,19 +123,27 @@ restricted scope because the plugin reads message bodies and changes labels.
 2. The Gmail client fetches each full message and validates required IDs and
    bounded header fields.
 3. The plugin ignores messages sent by the configured mailbox.
-4. Sender policy admits or rejects the normalized `From` address before MIME
-   decoding. Admission requires the sender in both address policies and aligned
-   DMARC success from Google's trusted `Authentication-Results` boundary.
-5. The plugin validates and decodes the bounded text body.
-6. The runtime builds a channel route with `thread:<gmail-thread-id>` as the
+4. Sender policy checks the normalized `From` address and aligned DMARC success
+   from Google's trusted `Authentication-Results` boundary.
+5. Recipient policy resolves `Reply-To`, `To`, and `Cc`, removes the configured
+   mailbox and duplicates, and requires every reply destination in `allowTo`.
+6. The plugin validates and decodes the bounded text body and at most 10
+   attachments. Each file is limited to 10 MiB, with a 20 MiB total limit.
+7. The runtime builds a channel route with `thread:<gmail-thread-id>` as the
    peer ID.
-7. OpenClaw dispatches the message in the route's session.
-8. Agent output is sent with the Gmail thread ID and required RFC reply headers.
-9. The plugin removes the `UNREAD` label after dispatch completes.
+8. OpenClaw dispatches the message and managed media in the route's session.
+9. Agent output is sent to all permitted participants with the Gmail thread ID
+   and required RFC reply headers.
+10. The plugin removes the `UNREAD` label after dispatch completes.
 
 Rejected senders are marked read so a denied message does not create a hot poll
 loop. Dispatch failures leave messages unread for a later poll.
 Thread replies fail closed when their source message lacks a `Message-ID`.
+
+For outbound-created threads, the plugin stores the opener under the thread ID
+returned by Gmail. The first inbound reply consumes that opener as structured
+thread context. A failed dispatch restores the record for retry. The thread ID,
+not the recipient address, remains the canonical session identity.
 
 ## Code Style
 
@@ -157,7 +166,8 @@ the deprecated `openclaw/plugin-sdk` root barrel.
 
 ## Testing Strategy
 
-- Unit tests cover target parsing, address policy, MIME parsing, and MIME output.
+- Unit tests cover target parsing, address policy, reply-all resolution, MIME
+  parsing, attachments, and MIME output.
 - Boundary tests use a fake Gmail transport. Tests do not call Google services.
 - Channel tests prove account resolution and session routing.
 - Inbound tests prove sender denial, self-message suppression, marking behavior,
@@ -175,7 +185,8 @@ Always:
 - Validate Gmail API data before use.
 - Keep OAuth values out of logs, errors, fixtures, and Git history.
 - Apply deny-by-default sender and recipient policy.
-- Limit message body and header sizes before model dispatch.
+- Limit message bodies, headers, attachment count, and attachment bytes before
+  model dispatch.
 - Return Gmail message and thread IDs in outbound receipts.
 - Run tests, type checking, linting, and the build before commits.
 
@@ -184,7 +195,7 @@ Ask first:
 - Add an OAuth callback server or another authentication flow.
 - Add Gmail push notifications or public webhook infrastructure.
 - Add dependencies beyond the Gmail client, Zod, and development tools.
-- Add attachment persistence or forward full thread history to the model.
+- Forward full historical thread content to the model.
 
 Never:
 
@@ -204,14 +215,16 @@ Never:
   thread.
 - Self-authored and denied messages do not reach the agent.
 - A new outbound email returns its Gmail thread ID in a durable receipt.
+- The first reply to an outbound-created thread receives the opener as context
+  in its canonical thread session.
+- Reply-all excludes the configured mailbox and rejects any recipient outside
+  `allowTo` before agent dispatch.
+- Inbound and outbound attachments respect the declared count and byte limits.
 - The package builds, tests, packs, and passes OpenClaw runtime inspection.
 
 ## Deferred Work
 
 - Interactive desktop OAuth onboarding
-- Attachments and inline images
 - HTML-rich outbound email
-- Reply-all and multi-recipient policy
 - Gmail History API and push notifications
 - Full thread-history context
-- Proven session reconciliation for outbound-originated Gmail threads

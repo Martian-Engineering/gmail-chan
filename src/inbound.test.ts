@@ -46,7 +46,7 @@ function createRuntime(pendingText?: string) {
     void params;
     return { kind: "dispatched" };
   });
-  const pendingContext = pendingText
+  let pendingContext = pendingText
     ? {
         accountId: "work",
         threadId: "thread-1",
@@ -55,10 +55,16 @@ function createRuntime(pendingText?: string) {
       }
     : undefined;
   const threadStore = {
-    register: vi.fn(async () => undefined),
+    register: vi.fn(async (_key: string, value: typeof pendingContext) => {
+      pendingContext = value;
+    }),
     registerIfAbsent: vi.fn(),
     lookup: vi.fn(async () => pendingContext),
-    consume: vi.fn(async () => pendingContext),
+    consume: vi.fn(async () => {
+      const value = pendingContext;
+      pendingContext = undefined;
+      return value;
+    }),
     delete: vi.fn(async () => true),
     entries: vi.fn(async () => []),
     clear: vi.fn(),
@@ -144,7 +150,7 @@ describe("handleGmailInbound", () => {
   });
 
   it("carries an outbound opener into the first canonical thread reply", async () => {
-    const { runtime, buildContext, threadStore } = createRuntime(
+    const { runtime, dispatchReply, buildContext, threadStore } = createRuntime(
       "Earlier outbound question",
     );
 
@@ -166,6 +172,22 @@ describe("handleGmailInbound", () => {
       }),
     );
     expect(threadStore.consume).toHaveBeenCalledWith("work:thread-1");
+
+    await handleGmailInbound({
+      account,
+      cfg,
+      message: gmailMessage("message-2", "thread-1", "person@example.com"),
+      runtime,
+    });
+
+    const secondFacts = buildContext.mock.calls[1]?.[0] as {
+      supplemental?: unknown;
+    };
+    expect(secondFacts.supplemental).toBeUndefined();
+    const keys = dispatchReply.mock.calls.map(
+      (call) => (call[0] as { routeSessionKey: string }).routeSessionKey,
+    );
+    expect(keys[1]).toBe(keys[0]);
   });
 
   it("restores an outbound opener when dispatch fails", async () => {
