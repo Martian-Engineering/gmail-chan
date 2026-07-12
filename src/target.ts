@@ -12,7 +12,10 @@ export function normalizeEmailAddress(value: string): string | null {
 
 /** Parses the public Gmail target grammar into one typed variant. */
 export function parseGmailTarget(value: string): GmailTarget | null {
-  const trimmed = value.trim();
+  const raw = value.trim();
+  const trimmed = raw.toLowerCase().startsWith("gmail:")
+    ? raw.slice("gmail:".length)
+    : raw;
   if (trimmed.startsWith("thread:")) {
     const threadId = trimmed.slice("thread:".length);
     return THREAD_ID_PATTERN.test(threadId)

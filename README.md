@@ -51,8 +51,8 @@ which OpenClaw supports for local plugin development.
    flow. Google's
    [desktop OAuth guide](https://developers.google.com/identity/protocols/oauth2/native-app)
    documents the authorization-code and refresh-token exchange.
-5. Store the client ID, client secret, and refresh token in environment variables
-   or another OpenClaw secret provider.
+5. Store the client ID, client secret, and refresh token as environment-backed
+   OpenClaw secret inputs.
 
 For a single-operator development setup, the
 [Google OAuth 2.0 Playground](https://developers.google.com/oauthplayground/)
@@ -131,6 +131,9 @@ The shared OpenClaw `message` tool accepts two Gmail target forms:
 - `thread:<gmail-thread-id>` replies in an existing Gmail thread.
 - `mailto:<email-address>` starts a new Gmail thread with subject
   `OpenClaw message`.
+
+OpenClaw-qualified forms such as `gmail:thread:<gmail-thread-id>` and
+`gmail:mailto:<email-address>` normalize to the same targets.
 
 Bare email addresses normalize to `mailto:` targets. Thread IDs require the
 `thread:` prefix.

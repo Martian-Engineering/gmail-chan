@@ -15,6 +15,15 @@ describe("Gmail target grammar", () => {
     });
   });
 
+  it("accepts OpenClaw channel-qualified targets", () => {
+    expect(normalizeGmailTarget("gmail:mailto:Person@Example.com")).toBe(
+      "mailto:person@example.com",
+    );
+    expect(normalizeGmailTarget("gmail:thread:18f0abCDef12")).toBe(
+      "thread:18f0abCDef12",
+    );
+  });
+
   it("rejects malformed targets", () => {
     expect(normalizeGmailTarget("not-an-address")).toBeNull();
     expect(normalizeGmailTarget("thread:../mailbox")).toBeNull();

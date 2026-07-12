@@ -1,15 +1,22 @@
 import type { ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
-import {
-  buildSecretInputSchema,
-  type SecretInput,
-} from "openclaw/plugin-sdk/secret-input";
 import { z } from "zod";
+
+const OAuthSecretInputSchema = z.union([
+  z.string(),
+  z
+    .object({
+      source: z.literal("env"),
+      provider: z.string().trim().min(1),
+      id: z.string().trim().min(1),
+    })
+    .strict(),
+]);
 
 const OAuthConfigSchema = z
   .object({
-    clientId: buildSecretInputSchema().optional(),
-    clientSecret: buildSecretInputSchema().optional(),
-    refreshToken: buildSecretInputSchema().optional(),
+    clientId: OAuthSecretInputSchema.optional(),
+    clientSecret: OAuthSecretInputSchema.optional(),
+    refreshToken: OAuthSecretInputSchema.optional(),
   })
   .strict()
   .default({});
@@ -37,9 +44,9 @@ export const GmailChannelConfigSchema = z
   .strict();
 
 export type GmailOAuthConfig = {
-  clientId?: SecretInput;
-  clientSecret?: SecretInput;
-  refreshToken?: SecretInput;
+  clientId?: z.infer<typeof OAuthSecretInputSchema>;
+  clientSecret?: z.infer<typeof OAuthSecretInputSchema>;
+  refreshToken?: z.infer<typeof OAuthSecretInputSchema>;
 };
 
 export type GmailAccountConfig = z.infer<typeof GmailAccountConfigSchema>;

@@ -24,4 +24,23 @@ describe("GmailChannelConfigSchema", () => {
     expect(parsed.accounts.work?.allowFrom).toEqual([]);
     expect(parsed.accounts.work?.allowTo).toEqual([]);
   });
+
+  it("rejects secret providers that runtime resolution cannot materialize", () => {
+    expect(() =>
+      GmailChannelConfigSchema.parse({
+        accounts: {
+          work: {
+            email: "agent@example.com",
+            oauth: {
+              refreshToken: {
+                source: "file",
+                provider: "default",
+                id: "gmail-token",
+              },
+            },
+          },
+        },
+      }),
+    ).toThrow();
+  });
 });

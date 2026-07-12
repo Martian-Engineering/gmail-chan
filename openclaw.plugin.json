@@ -64,7 +64,7 @@
                 "properties": {
                   "source": {
                     "type": "string",
-                    "enum": ["env", "file", "exec"]
+                    "enum": ["env"]
                   },
                   "provider": { "type": "string", "minLength": 1 },
                   "id": { "type": "string", "minLength": 1 }

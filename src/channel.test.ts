@@ -50,6 +50,9 @@ describe("gmailPlugin config", () => {
     expect(different).not.toMatchObject({
       sessionKey: (first as { sessionKey: string }).sessionKey,
     });
+    expect(
+      resolveRoute?.({ ...params, target: "gmail:thread:thread-1" }),
+    ).toEqual(first);
   });
 
   it("exposes gateway and durable text message adapters", () => {
