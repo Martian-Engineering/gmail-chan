@@ -3,7 +3,6 @@ import {
   createChatChannelPlugin,
   type ChannelPlugin,
 } from "openclaw/plugin-sdk/channel-core";
-import { getChatChannelMeta } from "openclaw/plugin-sdk/channel-plugin-common";
 import {
   createMessageReceiptFromOutboundResults,
   defineChannelMessageAdapter,
@@ -65,7 +64,16 @@ export const gmailPlugin: ChannelPlugin<ResolvedGmailAccount> =
   createChatChannelPlugin({
     base: {
       id: GMAIL_CHANNEL_ID,
-      meta: { ...getChatChannelMeta(GMAIL_CHANNEL_ID), id: GMAIL_CHANNEL_ID },
+      meta: {
+        id: GMAIL_CHANNEL_ID,
+        label: "Gmail",
+        selectionLabel: "Gmail (OAuth)",
+        detailLabel: "Gmail",
+        docsPath: "/channels/gmail",
+        docsLabel: "gmail",
+        blurb: "Use Gmail threads as isolated OpenClaw conversations.",
+        systemImage: "envelope",
+      },
       capabilities: {
         chatTypes: ["group"],
         threads: true,

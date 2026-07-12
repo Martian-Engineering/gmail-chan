@@ -13,8 +13,9 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "pnpm clean && tsc -p tsconfig.build.json",
     "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
