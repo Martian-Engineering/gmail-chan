@@ -11,6 +11,7 @@ import type { GmailApiMessage, ParsedGmailMessage } from "./message.js";
 import {
   MAX_GMAIL_ATTACHMENT_BYTES,
   MAX_GMAIL_TOTAL_ATTACHMENT_BYTES,
+  isGmailDataWithinDecodedLimit,
   parseGmailMessage,
   parseGmailMessageEnvelope,
   resolveGmailReplyRecipients,
@@ -55,6 +56,10 @@ async function materializeAttachments(params: {
     }
     let data: Buffer | undefined;
     if (attachment.data) {
+      if (!isGmailDataWithinDecodedLimit(attachment.data, remainingBytes)) {
+        unavailableCount += 1;
+        continue;
+      }
       data = Buffer.from(attachment.data, "base64url");
     } else if (attachment.attachmentId && params.client) {
       try {

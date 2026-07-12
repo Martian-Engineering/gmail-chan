@@ -11,6 +11,14 @@ const MAX_HEADER_LENGTH = 32 * 1024;
 const MAX_PARTS = 100;
 const MAX_PART_DEPTH = 10;
 
+/** Checks base64url length before allocating a decoded Gmail data buffer. */
+export function isGmailDataWithinDecodedLimit(
+  data: string,
+  maxBytes: number,
+): boolean {
+  return data.length <= Math.ceil((maxBytes * 4) / 3) + 4;
+}
+
 const GmailHeaderSchema = z.object({
   name: z.string().max(256),
   value: z.string().max(MAX_HEADER_LENGTH),
@@ -197,7 +205,7 @@ function findAttachmentCandidates(part: GmailMessagePart): {
 }
 
 function decodeBody(data: string, maxBytes: number): string {
-  if (data.length > Math.ceil((maxBytes * 4) / 3) + 4) {
+  if (!isGmailDataWithinDecodedLimit(data, maxBytes)) {
     throw new Error(`Gmail message body exceeds ${maxBytes} bytes`);
   }
   const decoded = Buffer.from(data, "base64url");

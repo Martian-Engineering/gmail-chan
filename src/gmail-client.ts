@@ -2,7 +2,11 @@ import { auth, gmail } from "@googleapis/gmail";
 import { z } from "zod";
 import { Buffer } from "node:buffer";
 import type { ResolvedGmailAccount } from "./accounts.js";
-import { GmailApiMessageSchema, type GmailApiMessage } from "./message.js";
+import {
+  GmailApiMessageSchema,
+  isGmailDataWithinDecodedLimit,
+  type GmailApiMessage,
+} from "./message.js";
 
 const MessageListSchema = z.object({
   messages: z
@@ -104,7 +108,7 @@ export class GmailClient {
       typeof response === "object" &&
       "data" in response &&
       typeof response.data === "string" &&
-      response.data.length > Math.ceil((maxBytes * 4) / 3) + 4
+      !isGmailDataWithinDecodedLimit(response.data, maxBytes)
     ) {
       throw new GmailAttachmentTooLargeError(maxBytes);
     }

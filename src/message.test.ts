@@ -1,12 +1,21 @@
 import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vitest";
-import { buildRawEmail, parseGmailMessage } from "./message.js";
+import {
+  buildRawEmail,
+  isGmailDataWithinDecodedLimit,
+  parseGmailMessage,
+} from "./message.js";
 
 function encodeBody(value: string): string {
   return Buffer.from(value, "utf8").toString("base64url");
 }
 
 describe("parseGmailMessage", () => {
+  it("bounds base64url data before decoded buffer allocation", () => {
+    expect(isGmailDataWithinDecodedLimit("dG9vIGxhcmdl", 3)).toBe(false);
+    expect(isGmailDataWithinDecodedLimit("b2s", 3)).toBe(true);
+  });
+
   it("extracts bounded plain text and normalized headers", () => {
     const message = parseGmailMessage({
       id: "message-1",
