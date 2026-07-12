@@ -55,6 +55,17 @@ describe("gmailPlugin config", () => {
     ).toEqual(first);
   });
 
+  it("does not claim an email address is a canonical Gmail thread session", () => {
+    const route = gmailPlugin.messaging?.resolveOutboundSessionRoute?.({
+      cfg: {} as never,
+      agentId: "main",
+      accountId: "work",
+      target: "mailto:person@example.com",
+    });
+
+    expect(route).toMatchObject({ recipientSessionExact: false });
+  });
+
   it("exposes gateway and durable text message adapters", () => {
     expect(gmailPlugin.gateway?.startAccount).toBeTypeOf("function");
     expect(gmailPlugin.message?.durableFinal?.capabilities).toMatchObject({

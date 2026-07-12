@@ -20,8 +20,35 @@ import { createGmailClient } from "./gmail-client.js";
 import { sendGmailText } from "./outbound.js";
 import { getGmailRuntime } from "./runtime.js";
 import { normalizeGmailTarget, parseGmailTarget } from "./target.js";
+import { recordOutboundThreadContext } from "./thread-context.js";
 
 export const GMAIL_CHANNEL_ID = "gmail" as const;
+
+async function rememberOutboundThread(params: {
+  account: ResolvedGmailAccount;
+  target: string;
+  text: string;
+  threadId: string;
+}): Promise<void> {
+  if (parseGmailTarget(params.target)?.kind !== "email") {
+    return;
+  }
+  const runtime = getGmailRuntime();
+  try {
+    await recordOutboundThreadContext({
+      runtime,
+      accountId: params.account.accountId,
+      threadId: params.threadId,
+      text: params.text,
+    });
+  } catch (error) {
+    runtime.logging
+      .getChildLogger({ channel: GMAIL_CHANNEL_ID })
+      .warn("Could not persist outbound Gmail thread context", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+  }
+}
 
 const gmailMessageAdapter = defineChannelMessageAdapter({
   id: GMAIL_CHANNEL_ID,
@@ -45,6 +72,12 @@ const gmailMessageAdapter = defineChannelMessageAdapter({
         target: ctx.to,
         text: ctx.text,
         ...(ctx.replyToId ? { replyToId: ctx.replyToId } : {}),
+      });
+      await rememberOutboundThread({
+        account,
+        target: ctx.to,
+        text: ctx.text,
+        threadId: result.threadId,
       });
       const replyToId = ctx.replyToId ?? undefined;
       return {
@@ -132,8 +165,7 @@ export const gmailPlugin: ChannelPlugin<ResolvedGmailAccount> =
             agentId,
             channel: GMAIL_CHANNEL_ID,
             ...(accountId !== undefined ? { accountId } : {}),
-            recipientSessionExact:
-              parsed.kind === "thread" ? true : "delivery-identity",
+            recipientSessionExact: parsed.kind === "thread",
             peer: { kind: "channel", id: normalized },
             chatType: "channel",
             from: `gmail:${accountId ?? "default"}`,
@@ -171,6 +203,12 @@ export const gmailPlugin: ChannelPlugin<ResolvedGmailAccount> =
             target: to,
             text,
             ...(replyToId ? { replyToId } : {}),
+          });
+          await rememberOutboundThread({
+            account,
+            target: to,
+            text,
+            threadId: result.threadId,
           });
           return { messageId: result.messageId };
         },

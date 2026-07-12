@@ -40,12 +40,48 @@ function gmailMessage(id: string, threadId: string, from: string) {
   };
 }
 
-function createRuntime() {
+function createRuntime(pendingText?: string) {
   const dispatchReply = vi.fn(async (params: unknown) => {
     void params;
     return { kind: "dispatched" };
   });
+  const pendingContext = pendingText
+    ? {
+        accountId: "work",
+        threadId: "thread-1",
+        text: pendingText,
+        createdAt: 1,
+      }
+    : undefined;
+  const threadStore = {
+    register: vi.fn(async () => undefined),
+    registerIfAbsent: vi.fn(),
+    lookup: vi.fn(async () => pendingContext),
+    consume: vi.fn(async () => pendingContext),
+    delete: vi.fn(async () => true),
+    entries: vi.fn(async () => []),
+    clear: vi.fn(),
+  };
+  const buildContext = vi.fn(
+    (facts: {
+      route: { routeSessionKey: string };
+      message: { rawBody: string };
+    }) => ({
+      Body: facts.message.rawBody,
+      BodyForAgent: facts.message.rawBody,
+      BodyForCommands: facts.message.rawBody,
+      ChatType: "channel",
+      CommandAuthorized: false,
+      CommandBody: facts.message.rawBody,
+      From: "gmail",
+      RawBody: facts.message.rawBody,
+      SessionKey: facts.route.routeSessionKey,
+      To: "gmail",
+      InboundEventKind: "message",
+    }),
+  );
   const runtime = {
+    state: { openKeyedStore: () => threadStore },
     channel: {
       routing: {
         resolveAgentRoute: ({ peer }: { peer: { id: string } }) => ({
@@ -59,28 +95,13 @@ function createRuntime() {
         recordInboundSession: vi.fn(),
       },
       inbound: {
-        buildContext: (facts: {
-          route: { routeSessionKey: string };
-          message: { rawBody: string };
-        }) => ({
-          Body: facts.message.rawBody,
-          BodyForAgent: facts.message.rawBody,
-          BodyForCommands: facts.message.rawBody,
-          ChatType: "channel",
-          CommandAuthorized: false,
-          CommandBody: facts.message.rawBody,
-          From: "gmail",
-          RawBody: facts.message.rawBody,
-          SessionKey: facts.route.routeSessionKey,
-          To: "gmail",
-          InboundEventKind: "message",
-        }),
+        buildContext,
         dispatchReply,
       },
       reply: { dispatchReplyWithBufferedBlockDispatcher: vi.fn() },
     },
   } as unknown as PluginRuntime;
-  return { runtime, dispatchReply };
+  return { runtime, dispatchReply, buildContext, threadStore };
 }
 
 describe("handleGmailInbound", () => {
@@ -111,6 +132,51 @@ describe("handleGmailInbound", () => {
     );
     expect(keys[0]).toBe(keys[1]);
     expect(keys[2]).not.toBe(keys[0]);
+  });
+
+  it("carries an outbound opener into the first canonical thread reply", async () => {
+    const { runtime, buildContext, threadStore } = createRuntime(
+      "Earlier outbound question",
+    );
+
+    await handleGmailInbound({
+      account,
+      cfg,
+      message: gmailMessage("message-1", "thread-1", "person@example.com"),
+      runtime,
+    });
+
+    expect(buildContext).toHaveBeenCalledWith(
+      expect.objectContaining({
+        supplemental: {
+          thread: expect.objectContaining({
+            id: "thread-1",
+            starterBody: "Earlier outbound question",
+          }),
+        },
+      }),
+    );
+    expect(threadStore.consume).toHaveBeenCalledWith("work:thread-1");
+  });
+
+  it("restores an outbound opener when dispatch fails", async () => {
+    const { runtime, dispatchReply, threadStore } = createRuntime(
+      "Earlier outbound question",
+    );
+    dispatchReply.mockRejectedValueOnce(new Error("dispatch failed"));
+
+    await expect(
+      handleGmailInbound({
+        account,
+        cfg,
+        message: gmailMessage("message-1", "thread-1", "person@example.com"),
+        runtime,
+      }),
+    ).rejects.toThrow("dispatch failed");
+    expect(threadStore.register).toHaveBeenCalledWith(
+      "work:thread-1",
+      expect.objectContaining({ text: "Earlier outbound question" }),
+    );
   });
 
   it("does not dispatch self-authored or denied messages", async () => {
