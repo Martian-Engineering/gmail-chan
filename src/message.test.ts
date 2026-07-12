@@ -130,6 +130,25 @@ describe("parseGmailMessage", () => {
     expect(message.text).toBe("");
     expect(message.attachments).toHaveLength(1);
   });
+
+  it("reports filename-bearing parts beyond the attachment count limit", () => {
+    const message = parseGmailMessage({
+      id: "message-6",
+      threadId: "thread-6",
+      payload: {
+        mimeType: "multipart/mixed",
+        headers: [{ name: "From", value: "person@example.com" }],
+        parts: Array.from({ length: 11 }, (_, index) => ({
+          mimeType: "application/pdf",
+          filename: `report-${index}.pdf`,
+          body: { attachmentId: `attachment-${index}`, size: 1 },
+        })),
+      },
+    });
+
+    expect(message.attachments).toHaveLength(10);
+    expect(message.skippedAttachmentCount).toBe(1);
+  });
 });
 
 describe("buildRawEmail", () => {

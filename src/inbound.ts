@@ -3,7 +3,10 @@ import type { OpenClawConfig } from "openclaw/plugin-sdk/channel-core";
 import { formatInboundMediaUnavailableText } from "openclaw/plugin-sdk/channel-inbound";
 import type { PluginRuntime } from "openclaw/plugin-sdk/runtime-store";
 import type { GmailCoreConfig, ResolvedGmailAccount } from "./accounts.js";
-import type { GmailClient } from "./gmail-client.js";
+import {
+  GmailAttachmentTooLargeError,
+  type GmailClient,
+} from "./gmail-client.js";
 import type { GmailApiMessage, ParsedGmailMessage } from "./message.js";
 import {
   MAX_GMAIL_ATTACHMENT_BYTES,
@@ -33,7 +36,7 @@ async function materializeAttachments(params: {
     messageId: string;
   }> = [];
   let totalBytes = 0;
-  let unavailableCount = 0;
+  let unavailableCount = params.message.skippedAttachmentCount;
   for (const attachment of params.message.attachments) {
     if (
       (attachment.size ?? 0) > MAX_GMAIL_ATTACHMENT_BYTES ||
@@ -42,18 +45,36 @@ async function materializeAttachments(params: {
       unavailableCount += 1;
       continue;
     }
-    const data = attachment.data
-      ? Buffer.from(attachment.data, "base64url")
-      : attachment.attachmentId && params.client
-        ? await params.client.getAttachmentData(
-            params.message.id,
-            attachment.attachmentId,
-            Math.min(
-              MAX_GMAIL_ATTACHMENT_BYTES,
-              MAX_GMAIL_TOTAL_ATTACHMENT_BYTES - totalBytes,
-            ),
-          )
-        : undefined;
+    const remainingBytes = Math.min(
+      MAX_GMAIL_ATTACHMENT_BYTES,
+      MAX_GMAIL_TOTAL_ATTACHMENT_BYTES - totalBytes,
+    );
+    if (remainingBytes <= 0) {
+      unavailableCount += 1;
+      continue;
+    }
+    let data: Buffer | undefined;
+    if (attachment.data) {
+      data = Buffer.from(attachment.data, "base64url");
+    } else if (attachment.attachmentId && params.client) {
+      try {
+        data = await params.client.getAttachmentData(
+          params.message.id,
+          attachment.attachmentId,
+          remainingBytes,
+        );
+      } catch (error) {
+        if (
+          error instanceof GmailAttachmentTooLargeError ||
+          (error instanceof Error &&
+            error.name === "GmailAttachmentTooLargeError")
+        ) {
+          unavailableCount += 1;
+          continue;
+        }
+        throw error;
+      }
+    }
     if (
       !data ||
       data.byteLength > MAX_GMAIL_ATTACHMENT_BYTES ||

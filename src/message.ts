@@ -87,6 +87,7 @@ export type ParsedGmailMessage = {
   references?: string;
   text: string;
   attachments: GmailAttachmentDescriptor[];
+  skippedAttachmentCount: number;
   timestampMs?: number;
 };
 
@@ -156,10 +157,12 @@ function findBodyCandidates(part: GmailMessagePart): BodyCandidates {
 }
 
 /** Collects a bounded set of filename-bearing MIME attachment parts. */
-function findAttachmentCandidates(
-  part: GmailMessagePart,
-): GmailAttachmentDescriptor[] {
+function findAttachmentCandidates(part: GmailMessagePart): {
+  attachments: GmailAttachmentDescriptor[];
+  skippedCount: number;
+} {
   const attachments: GmailAttachmentDescriptor[] = [];
+  let skippedCount = 0;
   let visited = 0;
   function visit(current: GmailMessagePart, depth: number): void {
     visited += 1;
@@ -167,28 +170,33 @@ function findAttachmentCandidates(
       throw new Error("Gmail MIME structure exceeds supported limits");
     }
     const filename = current.filename?.trim();
-    if (
-      filename &&
-      current.body &&
-      (current.body.attachmentId || current.body.data) &&
-      attachments.length < MAX_GMAIL_ATTACHMENTS
-    ) {
-      attachments.push({
-        filename,
-        mimeType: current.mimeType?.trim() || "application/octet-stream",
-        ...(current.body.size !== undefined ? { size: current.body.size } : {}),
-        ...(current.body.attachmentId
-          ? { attachmentId: current.body.attachmentId }
-          : {}),
-        ...(current.body.data ? { data: current.body.data } : {}),
-      });
+    if (filename) {
+      if (
+        current.body &&
+        (current.body.attachmentId || current.body.data) &&
+        attachments.length < MAX_GMAIL_ATTACHMENTS
+      ) {
+        attachments.push({
+          filename,
+          mimeType: current.mimeType?.trim() || "application/octet-stream",
+          ...(current.body.size !== undefined
+            ? { size: current.body.size }
+            : {}),
+          ...(current.body.attachmentId
+            ? { attachmentId: current.body.attachmentId }
+            : {}),
+          ...(current.body.data ? { data: current.body.data } : {}),
+        });
+      } else {
+        skippedCount += 1;
+      }
     }
     for (const child of current.parts ?? []) {
       visit(child, depth + 1);
     }
   }
   visit(part, 0);
-  return attachments;
+  return { attachments, skippedCount };
 }
 
 function decodeBody(data: string, maxBytes: number): string {
@@ -356,7 +364,8 @@ export function parseGmailMessage(
 
   // Prefer the sender's plain-text alternative. HTML is treated only as text.
   const bodies = findBodyCandidates(message.payload);
-  const attachments = findAttachmentCandidates(message.payload);
+  const attachmentCandidates = findAttachmentCandidates(message.payload);
+  const attachments = attachmentCandidates.attachments;
   const bodyData = bodies.plain ?? bodies.html;
   if (!bodyData && attachments.length === 0) {
     throw new Error("Gmail message has no supported text body");
@@ -378,6 +387,7 @@ export function parseGmailMessage(
     ...(references ? { references } : {}),
     text: bodies.plain ? decoded.trim() : htmlToText(decoded),
     attachments,
+    skippedAttachmentCount: attachmentCandidates.skippedCount,
     ...(envelope.timestampMs !== undefined
       ? { timestampMs: envelope.timestampMs }
       : {}),

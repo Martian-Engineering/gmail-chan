@@ -391,4 +391,41 @@ describe("handleGmailInbound", () => {
       }),
     );
   });
+
+  it("reports a downloaded attachment that exceeds its remaining budget", async () => {
+    const { runtime, buildContext } = createRuntime();
+    const base = gmailMessage("message-1", "thread-1", "person@example.com");
+    const attached = {
+      ...base,
+      payload: {
+        mimeType: "application/pdf",
+        filename: "unknown-size.pdf",
+        headers: base.payload.headers,
+        body: { attachmentId: "attachment-1" },
+      },
+    };
+    const client = {
+      getAttachmentData: vi.fn(async () => {
+        const error = new Error("Gmail attachment exceeds 10 bytes");
+        error.name = "GmailAttachmentTooLargeError";
+        throw error;
+      }),
+    };
+
+    await handleGmailInbound({
+      account,
+      cfg,
+      message: attached,
+      runtime,
+      client: client as never,
+    });
+
+    expect(buildContext).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.objectContaining({
+          bodyForAgent: expect.stringContaining("attachment unavailable"),
+        }),
+      }),
+    );
+  });
 });

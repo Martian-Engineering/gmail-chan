@@ -22,9 +22,17 @@ const SentMessageSchema = z.object({
 });
 
 const AttachmentBodySchema = z.object({
-  data: z.string().max(14 * 1024 * 1024),
+  data: z.string(),
   size: z.number().int().nonnegative().optional(),
 });
+
+/** Error raised when Gmail attachment bytes exceed the caller's fixed budget. */
+export class GmailAttachmentTooLargeError extends Error {
+  public constructor(maxBytes: number) {
+    super(`Gmail attachment exceeds ${maxBytes} bytes`);
+    this.name = "GmailAttachmentTooLargeError";
+  }
+}
 
 export type GmailApi = {
   listMessages: () => Promise<unknown>;
@@ -84,20 +92,28 @@ export class GmailClient {
     attachmentId: string,
     maxBytes: number,
   ): Promise<Buffer> {
-    const result = AttachmentBodySchema.safeParse(
-      await this.#api.getAttachment(messageId, attachmentId),
-    );
+    const response = await this.#api.getAttachment(messageId, attachmentId);
+    if (
+      response &&
+      typeof response === "object" &&
+      "data" in response &&
+      typeof response.data === "string" &&
+      response.data.length > Math.ceil((maxBytes * 4) / 3) + 4
+    ) {
+      throw new GmailAttachmentTooLargeError(maxBytes);
+    }
+    const result = AttachmentBodySchema.safeParse(response);
     if (!result.success) {
       throw new Error("Invalid Gmail attachment response", {
         cause: result.error,
       });
     }
     if (result.data.size !== undefined && result.data.size > maxBytes) {
-      throw new Error(`Gmail attachment exceeds ${maxBytes} bytes`);
+      throw new GmailAttachmentTooLargeError(maxBytes);
     }
     const buffer = Buffer.from(result.data.data, "base64url");
     if (buffer.byteLength > maxBytes) {
-      throw new Error(`Gmail attachment exceeds ${maxBytes} bytes`);
+      throw new GmailAttachmentTooLargeError(maxBytes);
     }
     return buffer;
   }

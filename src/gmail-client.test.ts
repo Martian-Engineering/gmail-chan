@@ -84,4 +84,18 @@ describe("GmailClient", () => {
       client.getAttachmentData("message-1", "attachment-1", 9),
     ).rejects.toThrow("exceeds");
   });
+
+  it("bounds an attachment when Gmail omits its declared size", async () => {
+    const client = new GmailClient(
+      createApi({
+        getAttachment: vi.fn(async () => ({
+          data: Buffer.from("too large").toString("base64url"),
+        })),
+      }),
+    );
+
+    await expect(
+      client.getAttachmentData("message-1", "attachment-1", 3),
+    ).rejects.toThrow("exceeds");
+  });
 });
