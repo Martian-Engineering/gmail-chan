@@ -1,0 +1,98 @@
+{
+  "name": "@martian-engineering/gmail-chan",
+  "version": "0.1.0",
+  "description": "OpenClaw communication channel backed by Gmail threads",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist/",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "pnpm clean && tsc -p tsconfig.build.json",
+    "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "prepack": "pnpm build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "openclaw",
+    "gmail",
+    "email",
+    "channel",
+    "plugin"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Martian-Engineering/gmail-chan.git"
+  },
+  "engines": {
+    "node": ">=22.19.0 <23 || >=23.11.0"
+  },
+  "packageManager": "pnpm@11.2.2",
+  "peerDependencies": {
+    "openclaw": ">=2026.7.2"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@googleapis/gmail": "17.0.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@types/node": "26.1.1",
+    "eslint": "9.39.5",
+    "openclaw": "2026.7.1-beta.5",
+    "prettier": "3.9.5",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.63.0",
+    "vitest": "4.1.9"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "runtimeExtensions": [
+      "./dist/index.js"
+    ],
+    "channel": {
+      "id": "gmail",
+      "label": "Gmail",
+      "selectionLabel": "Gmail (OAuth)",
+      "detailLabel": "Gmail",
+      "docsPath": "/channels/gmail",
+      "docsLabel": "gmail",
+      "blurb": "Use Gmail threads as isolated OpenClaw conversations.",
+      "systemImage": "envelope",
+      "preferSessionLookupForAnnounceTarget": true,
+      "order": 100,
+      "exposure": {
+        "configured": true,
+        "setup": true,
+        "docs": true
+      }
+    },
+    "compat": {
+      "pluginApi": ">=2026.7.2",
+      "minGatewayVersion": "2026.7.2"
+    },
+    "build": {
+      "openclawVersion": "2026.7.2",
+      "pluginSdkVersion": "2026.7.2",
+      "openclawCommit": "1318cf1fdef0f86fa186ab30be9f0a60e24c7868"
+    }
+  }
+}
