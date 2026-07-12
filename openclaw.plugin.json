@@ -19,7 +19,74 @@
       "schema": {
         "type": "object",
         "additionalProperties": false,
-        "properties": {}
+        "properties": {
+          "enabled": { "type": "boolean", "default": true },
+          "defaultAccount": { "type": "string", "minLength": 1 },
+          "accounts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["email"],
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "enabled": { "type": "boolean", "default": true },
+                "email": { "type": "string", "format": "email" },
+                "oauth": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "clientId": { "$ref": "#/$defs/secretInput" },
+                    "clientSecret": { "$ref": "#/$defs/secretInput" },
+                    "refreshToken": { "$ref": "#/$defs/secretInput" }
+                  }
+                },
+                "allowFrom": { "type": "array", "items": { "type": "string" } },
+                "allowTo": { "type": "array", "items": { "type": "string" } },
+                "pollIntervalSeconds": {
+                  "type": "integer",
+                  "minimum": 10,
+                  "maximum": 3600,
+                  "default": 30
+                }
+              }
+            }
+          }
+        },
+        "$defs": {
+          "secretInput": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["source", "provider", "id"],
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "enum": ["env", "file", "exec"]
+                  },
+                  "provider": { "type": "string", "minLength": 1 },
+                  "id": { "type": "string", "minLength": 1 }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "uiHints": {
+        "accounts.*.oauth.clientId": {
+          "label": "OAuth client ID",
+          "sensitive": true
+        },
+        "accounts.*.oauth.clientSecret": {
+          "label": "OAuth client secret",
+          "sensitive": true
+        },
+        "accounts.*.oauth.refreshToken": {
+          "label": "OAuth refresh token",
+          "sensitive": true
+        }
       }
     }
   }
