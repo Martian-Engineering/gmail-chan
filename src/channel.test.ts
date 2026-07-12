@@ -28,4 +28,36 @@ describe("gmailPlugin config", () => {
       email: "agent@example.com",
     });
   });
+
+  it("builds one outbound session route per Gmail thread", () => {
+    const resolveRoute = gmailPlugin.messaging?.resolveOutboundSessionRoute;
+    expect(resolveRoute).toBeTypeOf("function");
+    const params = {
+      cfg: {} as never,
+      agentId: "main",
+      accountId: "work",
+      target: "thread:thread-1",
+    };
+    const first = resolveRoute?.(params);
+    const same = resolveRoute?.(params);
+    const different = resolveRoute?.({ ...params, target: "thread:thread-2" });
+
+    expect(first).toMatchObject({
+      threadId: "thread-1",
+      recipientSessionExact: true,
+    });
+    expect(same).toEqual(first);
+    expect(different).not.toMatchObject({
+      sessionKey: (first as { sessionKey: string }).sessionKey,
+    });
+  });
+
+  it("exposes gateway and durable text message adapters", () => {
+    expect(gmailPlugin.gateway?.startAccount).toBeTypeOf("function");
+    expect(gmailPlugin.message?.durableFinal?.capabilities).toMatchObject({
+      text: true,
+      replyTo: true,
+      thread: true,
+    });
+  });
 });
