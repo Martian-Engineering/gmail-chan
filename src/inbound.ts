@@ -21,7 +21,8 @@ export async function handleGmailInbound(params: {
   if (
     envelope.senderEmail === params.account.email ||
     !isAddressAllowed(envelope.senderEmail, params.account.allowFrom) ||
-    !isAddressAllowed(envelope.senderEmail, params.account.allowTo)
+    !isAddressAllowed(envelope.senderEmail, params.account.allowTo) ||
+    !envelope.senderDomainAuthenticated
   ) {
     return "ignored";
   }

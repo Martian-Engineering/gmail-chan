@@ -118,7 +118,11 @@ Both `allowFrom` and `allowTo` default to `[]`, which denies every address.
 
 `allowFrom` controls messages delivered to the agent. `allowTo` controls new
 outbound threads and replies. A permitted inbound sender must also be in
-`allowTo` for the agent to reply.
+`allowTo` for the agent to reply. Admission additionally fails closed unless a
+Google-generated `Authentication-Results` header reports aligned DMARC success
+for the normalized `From` domain. This prevents the address policy from trusting
+an unauthenticated, spoofed `From` header; mail from domains without passing
+DMARC is ignored.
 
 ## Targets and sessions
 
@@ -158,6 +162,8 @@ ID, the subject matches, and `References` plus `In-Reply-To` follow RFC 2822.
 The plugin sets all three requirements. See Google's
 [thread guide](https://developers.google.com/workspace/gmail/api/guides/threads)
 and [sending guide](https://developers.google.com/workspace/gmail/api/guides/sending).
+If the source message has no `Message-ID`, the plugin fails closed instead of
+claiming a reply that Gmail may place in a different thread.
 
 ## Limitations
 

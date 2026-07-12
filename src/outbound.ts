@@ -91,13 +91,18 @@ export async function sendGmailText(params: {
   if (!isAddressAllowed(source.senderEmail, params.account.allowTo)) {
     throw new Error(`Gmail recipient "${source.senderEmail}" is not allowed`);
   }
+  if (!source.messageIdHeader) {
+    throw new Error(
+      `Gmail reply source in thread "${target.threadId}" has no Message-ID header`,
+    );
+  }
   const references = buildReferences(source);
   const raw = buildRawEmail({
     from: params.account.email,
     to: source.senderEmail,
     subject: buildReplySubject(source.subject),
     text: params.text,
-    ...(source.messageIdHeader ? { inReplyTo: source.messageIdHeader } : {}),
+    inReplyTo: source.messageIdHeader,
     ...(references ? { references } : {}),
   });
   return await params.client.sendRawMessage(raw, target.threadId);

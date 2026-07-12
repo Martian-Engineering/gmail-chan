@@ -120,17 +120,21 @@ restricted scope because the plugin reads message bodies and changes labels.
 
 1. The gateway lists `in:inbox is:unread` messages.
 2. The Gmail client fetches each full message and validates required IDs and
-   bounded header/body fields.
+   bounded header fields.
 3. The plugin ignores messages sent by the configured mailbox.
-4. Sender policy admits or rejects the normalized `From` address.
-5. The runtime builds a channel route with `thread:<gmail-thread-id>` as the
+4. Sender policy admits or rejects the normalized `From` address before MIME
+   decoding. Admission requires the sender in both address policies and aligned
+   DMARC success from Google's trusted `Authentication-Results` boundary.
+5. The plugin validates and decodes the bounded text body.
+6. The runtime builds a channel route with `thread:<gmail-thread-id>` as the
    peer ID.
-6. OpenClaw dispatches the message in the route's session.
-7. Agent output is sent with the Gmail thread ID and RFC reply headers.
-8. The plugin removes the `UNREAD` label after dispatch completes.
+7. OpenClaw dispatches the message in the route's session.
+8. Agent output is sent with the Gmail thread ID and required RFC reply headers.
+9. The plugin removes the `UNREAD` label after dispatch completes.
 
 Rejected senders are marked read so a denied message does not create a hot poll
 loop. Dispatch failures leave messages unread for a later poll.
+Thread replies fail closed when their source message lacks a `Message-ID`.
 
 ## Code Style
 

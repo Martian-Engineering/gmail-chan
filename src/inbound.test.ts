@@ -30,6 +30,10 @@ function gmailMessage(id: string, threadId: string, from: string) {
       headers: [
         { name: "From", value: from },
         { name: "Subject", value: "Question" },
+        {
+          name: "Authentication-Results",
+          value: "mx.google.com; dmarc=pass (p=NONE) header.from=example.com",
+        },
       ],
       body: { data: Buffer.from("Question body").toString("base64url") },
     },
@@ -141,6 +145,20 @@ describe("handleGmailInbound", () => {
         message: gmailMessage("message-1", "thread-1", "person@example.com"),
         runtime,
       }),
+    ).resolves.toBe("ignored");
+    expect(dispatchReply).not.toHaveBeenCalled();
+  });
+
+  it("does not trust a later sender-supplied authentication result", async () => {
+    const { runtime, dispatchReply } = createRuntime();
+    const spoofed = gmailMessage("message-1", "thread-1", "person@example.com");
+    spoofed.payload.headers.unshift({
+      name: "Authentication-Results",
+      value: "mx.google.com; dmarc=fail header.from=example.com",
+    });
+
+    await expect(
+      handleGmailInbound({ account, cfg, message: spoofed, runtime }),
     ).resolves.toBe("ignored");
     expect(dispatchReply).not.toHaveBeenCalled();
   });

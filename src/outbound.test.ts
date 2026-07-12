@@ -91,6 +91,33 @@ describe("sendGmailText", () => {
     expect(getMessage).toHaveBeenCalledWith("message-1");
   });
 
+  it("does not claim a thread reply without a source Message-ID", async () => {
+    const { client, getMessage, sendMessage } = createClient();
+    getMessage.mockResolvedValue({
+      id: "message-1",
+      threadId: "thread-1",
+      payload: {
+        mimeType: "text/plain",
+        headers: [
+          { name: "From", value: "Person <person@example.com>" },
+          { name: "Subject", value: "Question" },
+        ],
+        body: { data: Buffer.from("Question body").toString("base64url") },
+      },
+    });
+
+    await expect(
+      sendGmailText({
+        account,
+        client,
+        target: "thread:thread-1",
+        text: "Answer",
+        replyToId: "message-1",
+      }),
+    ).rejects.toThrow("Message-ID");
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
   it("denies a new outbound thread outside allowTo", async () => {
     const { client } = createClient();
 

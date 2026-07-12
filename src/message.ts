@@ -60,6 +60,7 @@ export type GmailMessageEnvelope = {
   threadId: string;
   senderEmail: string;
   senderName?: string;
+  senderDomainAuthenticated: boolean;
   timestampMs?: number;
 };
 
@@ -144,6 +145,35 @@ function getHeader(part: GmailMessagePart, name: string): string | undefined {
   )?.value;
 }
 
+function hasAuthenticatedSenderDomain(
+  senderEmail: string,
+  authenticationResults: string | undefined,
+): boolean {
+  const senderDomain = senderEmail.split("@")[1]?.toLowerCase();
+  if (!senderDomain) {
+    return false;
+  }
+  if (!authenticationResults) {
+    return false;
+  }
+  // Gmail prepends its boundary result. Never accept a later, sender-supplied
+  // Authentication-Results field that could claim Google's authserv-id.
+  const normalized = authenticationResults.replace(/\s+/gu, " ").trim();
+  if (!/^mx\.google\.com\s*;/iu.test(normalized)) {
+    return false;
+  }
+  return normalized.split(";").some((result) => {
+    if (!/\bdmarc=pass\b/iu.test(result)) {
+      return false;
+    }
+    const authenticatedDomain = /\bheader\.from=([^\s;]+)/iu
+      .exec(result)?.[1]
+      ?.toLowerCase()
+      .replace(/\.$/u, "");
+    return authenticatedDomain === senderDomain;
+  });
+}
+
 function parseSender(value: string | undefined): {
   email: string;
   name?: string;
@@ -174,6 +204,10 @@ export function parseGmailMessageEnvelope(
     threadId: message.threadId,
     senderEmail: sender.email,
     ...(sender.name ? { senderName: sender.name } : {}),
+    senderDomainAuthenticated: hasAuthenticatedSenderDomain(
+      sender.email,
+      getHeader(message.payload, "Authentication-Results"),
+    ),
     ...(timestampMs !== undefined ? { timestampMs } : {}),
   };
 }
