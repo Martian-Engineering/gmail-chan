@@ -271,6 +271,20 @@ describe("handleGmailInbound", () => {
     expect(dispatchReply).not.toHaveBeenCalled();
   });
 
+  it("does not dispatch without a non-self primary reply recipient", async () => {
+    const { runtime, dispatchReply } = createRuntime();
+    const message = gmailMessage("message-1", "thread-1", "person@example.com");
+    message.payload.headers.push(
+      { name: "Reply-To", value: "agent@example.com" },
+      { name: "Cc", value: "person@example.com" },
+    );
+
+    await expect(
+      handleGmailInbound({ account, cfg, message, runtime }),
+    ).resolves.toBe("ignored");
+    expect(dispatchReply).not.toHaveBeenCalled();
+  });
+
   it("does not trust a later sender-supplied authentication result", async () => {
     const { runtime, dispatchReply } = createRuntime();
     const spoofed = gmailMessage("message-1", "thread-1", "person@example.com");

@@ -108,7 +108,7 @@ export async function handleGmailInbound(params: {
   if (
     envelope.senderEmail === params.account.email ||
     !isAddressAllowed(envelope.senderEmail, params.account.allowFrom) ||
-    allReplyRecipients.length === 0 ||
+    replyRecipients.to.length === 0 ||
     allReplyRecipients.some(
       (email) => !isAddressAllowed(email, params.account.allowTo),
     ) ||
