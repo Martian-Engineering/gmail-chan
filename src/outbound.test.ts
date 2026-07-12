@@ -91,6 +91,42 @@ describe("sendGmailText", () => {
     expect(getMessage).toHaveBeenCalledWith("message-1");
   });
 
+  it("replies to all permitted thread participants", async () => {
+    const { client, getMessage, sendMessage } = createClient();
+    const source = await client.getMessage("message-1");
+    if (!source.payload?.headers) {
+      throw new Error("fixture is missing headers");
+    }
+    source.payload.headers.push(
+      {
+        name: "To",
+        value: "agent@example.com, Teammate <team@example.com>",
+      },
+      { name: "Cc", value: "observer@example.com" },
+    );
+    getMessage.mockResolvedValue(source);
+
+    await sendGmailText({
+      account: {
+        ...account,
+        allowTo: [
+          "person@example.com",
+          "team@example.com",
+          "observer@example.com",
+        ],
+      },
+      client,
+      target: "thread:thread-1",
+      text: "Answer",
+      replyToId: "message-1",
+    });
+
+    const input = sendMessage.mock.calls[0]?.[0] as { raw: string };
+    const decoded = Buffer.from(input.raw, "base64url").toString("utf8");
+    expect(decoded).toContain("To: person@example.com\r\n");
+    expect(decoded).toContain("Cc: team@example.com, observer@example.com\r\n");
+  });
+
   it("does not claim a thread reply without a source Message-ID", async () => {
     const { client, getMessage, sendMessage } = createClient();
     getMessage.mockResolvedValue({

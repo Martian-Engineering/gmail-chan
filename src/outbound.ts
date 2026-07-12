@@ -3,6 +3,7 @@ import type { GmailClient } from "./gmail-client.js";
 import {
   buildRawEmail,
   parseGmailMessage,
+  resolveGmailReplyRecipients,
   type ParsedGmailMessage,
 } from "./message.js";
 import { isAddressAllowed } from "./policy.js";
@@ -88,8 +89,15 @@ export async function sendGmailText(params: {
     target.threadId,
     params.replyToId,
   );
-  if (!isAddressAllowed(source.senderEmail, params.account.allowTo)) {
-    throw new Error(`Gmail recipient "${source.senderEmail}" is not allowed`);
+  const recipients = resolveGmailReplyRecipients(source, params.account.email);
+  const deniedRecipient = [...recipients.to, ...recipients.cc].find(
+    (email) => !isAddressAllowed(email, params.account.allowTo),
+  );
+  if (recipients.to.length === 0) {
+    throw new Error(`Gmail thread "${target.threadId}" has no reply recipient`);
+  }
+  if (deniedRecipient) {
+    throw new Error(`Gmail recipient "${deniedRecipient}" is not allowed`);
   }
   if (!source.messageIdHeader) {
     throw new Error(
@@ -99,7 +107,8 @@ export async function sendGmailText(params: {
   const references = buildReferences(source);
   const raw = buildRawEmail({
     from: params.account.email,
-    to: source.senderEmail,
+    to: recipients.to,
+    cc: recipients.cc,
     subject: buildReplySubject(source.subject),
     text: params.text,
     inReplyTo: source.messageIdHeader,

@@ -2,7 +2,11 @@ import type { OpenClawConfig } from "openclaw/plugin-sdk/channel-core";
 import type { PluginRuntime } from "openclaw/plugin-sdk/runtime-store";
 import type { GmailCoreConfig, ResolvedGmailAccount } from "./accounts.js";
 import type { GmailApiMessage } from "./message.js";
-import { parseGmailMessage, parseGmailMessageEnvelope } from "./message.js";
+import {
+  parseGmailMessage,
+  parseGmailMessageEnvelope,
+  resolveGmailReplyRecipients,
+} from "./message.js";
 import { isAddressAllowed } from "./policy.js";
 import { buildGmailThreadTarget } from "./target.js";
 import {
@@ -22,10 +26,18 @@ export async function handleGmailInbound(params: {
   // Apply sender policy before decoding untrusted MIME content or invoking an
   // agent. A sender must be eligible for both admission and the reply path.
   const envelope = parseGmailMessageEnvelope(params.message);
+  const replyRecipients = resolveGmailReplyRecipients(
+    envelope,
+    params.account.email,
+  );
+  const allReplyRecipients = [...replyRecipients.to, ...replyRecipients.cc];
   if (
     envelope.senderEmail === params.account.email ||
     !isAddressAllowed(envelope.senderEmail, params.account.allowFrom) ||
-    !isAddressAllowed(envelope.senderEmail, params.account.allowTo) ||
+    allReplyRecipients.length === 0 ||
+    allReplyRecipients.some(
+      (email) => !isAddressAllowed(email, params.account.allowTo),
+    ) ||
     !envelope.senderDomainAuthenticated
   ) {
     return "ignored";

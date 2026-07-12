@@ -59,3 +59,4 @@
 {"type":"status_update","timestamp":"2026-07-12T22:41:27.198035Z","issue_id":"gmail-54c.1","payload":{"status":"in_progress"}}
 {"type":"comment","timestamp":"2026-07-12T22:45:33.796421Z","issue_id":"gmail-54c.1","payload":{"body":"Implemented canonical outbound-thread context keyed by Gmail thread ID. New mailto routes are no longer claimed as exact sessions; first inbound replies receive structured opener context, failures restore it, and distinct threads to one address remain separate. pnpm check passes with 42 tests."}}
 {"type":"close","timestamp":"2026-07-12T22:45:33.837445Z","issue_id":"gmail-54c.1","payload":{}}
+{"type":"status_update","timestamp":"2026-07-12T22:48:21.699955Z","issue_id":"gmail-54c.2","payload":{"status":"in_progress"}}

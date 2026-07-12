@@ -29,6 +29,7 @@ function gmailMessage(id: string, threadId: string, from: string) {
       mimeType: "text/plain",
       headers: [
         { name: "From", value: from },
+        { name: "To", value: "agent@example.com" },
         { name: "Subject", value: "Question" },
         {
           name: "Authentication-Results",
@@ -211,6 +212,20 @@ describe("handleGmailInbound", () => {
         message: gmailMessage("message-1", "thread-1", "person@example.com"),
         runtime,
       }),
+    ).resolves.toBe("ignored");
+    expect(dispatchReply).not.toHaveBeenCalled();
+  });
+
+  it("does not dispatch when any reply-all recipient is denied", async () => {
+    const { runtime, dispatchReply } = createRuntime();
+    const message = gmailMessage("message-1", "thread-1", "person@example.com");
+    message.payload.headers.push({
+      name: "Cc",
+      value: "outside@example.net",
+    });
+
+    await expect(
+      handleGmailInbound({ account, cfg, message, runtime }),
     ).resolves.toBe("ignored");
     expect(dispatchReply).not.toHaveBeenCalled();
   });

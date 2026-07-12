@@ -61,6 +61,9 @@ export type GmailMessageEnvelope = {
   senderEmail: string;
   senderName?: string;
   senderDomainAuthenticated: boolean;
+  replyToEmails: string[];
+  toEmails: string[];
+  ccEmails: string[];
   timestampMs?: number;
 };
 
@@ -69,12 +72,38 @@ export type ParsedGmailMessage = {
   threadId: string;
   senderEmail: string;
   senderName?: string;
+  replyToEmails: string[];
+  toEmails: string[];
+  ccEmails: string[];
   subject: string;
   messageIdHeader?: string;
   references?: string;
   text: string;
   timestampMs?: number;
 };
+
+export type GmailReplyRecipients = { to: string[]; cc: string[] };
+
+/** Resolves reply-all recipients while excluding the configured mailbox. */
+export function resolveGmailReplyRecipients(
+  message: Pick<
+    GmailMessageEnvelope,
+    "senderEmail" | "replyToEmails" | "toEmails" | "ccEmails"
+  >,
+  accountEmail: string,
+): GmailReplyRecipients {
+  const self = normalizeEmailAddress(accountEmail);
+  const primary =
+    message.replyToEmails.length > 0
+      ? message.replyToEmails
+      : [message.senderEmail];
+  const to = [...new Set(primary)].filter((email) => email !== self);
+  const toSet = new Set(to);
+  const cc = [...new Set([...message.toEmails, ...message.ccEmails])].filter(
+    (email) => email !== self && !toSet.has(email),
+  );
+  return { to, cc };
+}
 
 type BodyCandidates = { plain?: string; html?: string };
 
@@ -145,6 +174,12 @@ function getHeader(part: GmailMessagePart, name: string): string | undefined {
   )?.value;
 }
 
+function getHeaders(part: GmailMessagePart, name: string): string[] {
+  return (part.headers ?? [])
+    .filter((header) => header.name.toLowerCase() === name.toLowerCase())
+    .map((header) => header.value);
+}
+
 function hasAuthenticatedSenderDomain(
   senderEmail: string,
   authenticationResults: string | undefined,
@@ -190,6 +225,48 @@ function parseSender(value: string | undefined): {
   return { email, ...(name ? { name } : {}) };
 }
 
+/** Splits one RFC-style address list without splitting quoted display names. */
+function splitAddressList(value: string): string[] {
+  const entries: string[] = [];
+  let start = 0;
+  let quoted = false;
+  let escaped = false;
+  let angleDepth = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (escaped) {
+      escaped = false;
+    } else if (char === "\\" && quoted) {
+      escaped = true;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (!quoted && char === "<") {
+      angleDepth += 1;
+    } else if (!quoted && char === ">") {
+      angleDepth = Math.max(0, angleDepth - 1);
+    } else if (!quoted && angleDepth === 0 && char === ",") {
+      entries.push(value.slice(start, index));
+      start = index + 1;
+    }
+  }
+  entries.push(value.slice(start));
+  return entries.map((entry) => entry.trim()).filter(Boolean);
+}
+
+/** Parses and deduplicates every address from repeated message headers. */
+function parseAddressHeaders(part: GmailMessagePart, name: string): string[] {
+  const addresses: string[] = [];
+  for (const header of getHeaders(part, name)) {
+    for (const entry of splitAddressList(header)) {
+      const email = parseSender(entry).email;
+      if (!addresses.includes(email)) {
+        addresses.push(email);
+      }
+    }
+  }
+  return addresses;
+}
+
 /** Reads routing and policy metadata without parsing the MIME body. */
 export function parseGmailMessageEnvelope(
   input: unknown,
@@ -208,6 +285,9 @@ export function parseGmailMessageEnvelope(
       sender.email,
       getHeader(message.payload, "Authentication-Results"),
     ),
+    replyToEmails: parseAddressHeaders(message.payload, "Reply-To"),
+    toEmails: parseAddressHeaders(message.payload, "To"),
+    ccEmails: parseAddressHeaders(message.payload, "Cc"),
     ...(timestampMs !== undefined ? { timestampMs } : {}),
   };
 }
@@ -237,6 +317,9 @@ export function parseGmailMessage(
     threadId: message.threadId,
     senderEmail: envelope.senderEmail,
     ...(envelope.senderName ? { senderName: envelope.senderName } : {}),
+    replyToEmails: envelope.replyToEmails,
+    toEmails: envelope.toEmails,
+    ccEmails: envelope.ccEmails,
     subject: getHeader(message.payload, "Subject")?.trim() ?? "",
     ...(messageIdHeader ? { messageIdHeader } : {}),
     ...(references ? { references } : {}),
@@ -272,18 +355,34 @@ function normalizeCrLf(value: string): string {
 
 export type RawEmailInput = {
   from: string;
-  to: string;
+  to: string | string[];
+  cc?: string[];
   subject: string;
   text: string;
   inReplyTo?: string;
   references?: string;
 };
 
+function normalizeRecipients(
+  name: "To" | "Cc",
+  value: string | string[],
+): string[] {
+  const values = Array.isArray(value) ? value : [value];
+  const recipients = values.map((entry) =>
+    normalizeEmailAddress(requireSafeHeader(name, entry)),
+  );
+  if (recipients.some((entry) => !entry)) {
+    throw new Error(`Invalid ${name} email header`);
+  }
+  return [...new Set(recipients as string[])];
+}
+
 /** Builds the base64url RFC 2822 payload required by Gmail messages.send. */
 export function buildRawEmail(input: RawEmailInput): string {
   const from = normalizeEmailAddress(requireSafeHeader("From", input.from));
-  const to = normalizeEmailAddress(requireSafeHeader("To", input.to));
-  if (!from || !to) {
+  const to = normalizeRecipients("To", input.to);
+  const cc = normalizeRecipients("Cc", input.cc ?? []);
+  if (!from || to.length === 0) {
     throw new Error("Invalid From or To email header");
   }
   if (Buffer.byteLength(input.text, "utf8") > DEFAULT_MAX_MESSAGE_BODY_BYTES) {
@@ -294,12 +393,15 @@ export function buildRawEmail(input: RawEmailInput): string {
 
   const headers = [
     `From: ${from}`,
-    `To: ${to}`,
+    `To: ${to.join(", ")}`,
     `Subject: ${encodeSubject(input.subject)}`,
     "MIME-Version: 1.0",
     'Content-Type: text/plain; charset="UTF-8"',
     "Content-Transfer-Encoding: 8bit",
   ];
+  if (cc.length > 0) {
+    headers.splice(2, 0, `Cc: ${cc.join(", ")}`);
+  }
   if (input.inReplyTo) {
     headers.push(
       `In-Reply-To: ${requireSafeHeader("In-Reply-To", input.inReplyTo)}`,

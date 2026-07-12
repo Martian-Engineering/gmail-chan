@@ -16,6 +16,12 @@ describe("parseGmailMessage", () => {
         mimeType: "multipart/alternative",
         headers: [
           { name: "From", value: "Person <Person@Example.com>" },
+          { name: "Reply-To", value: '"Support, Team" <Help@Example.com>' },
+          {
+            name: "To",
+            value: "Agent <agent@example.com>, Teammate <team@example.com>",
+          },
+          { name: "Cc", value: "Observer <observer@example.com>" },
           { name: "Subject", value: "Question" },
           { name: "Message-ID", value: "<message-1@example.com>" },
           { name: "References", value: "<earlier@example.com>" },
@@ -35,6 +41,9 @@ describe("parseGmailMessage", () => {
       threadId: "thread-1",
       senderEmail: "person@example.com",
       senderName: "Person",
+      replyToEmails: ["help@example.com"],
+      toEmails: ["agent@example.com", "team@example.com"],
+      ccEmails: ["observer@example.com"],
       subject: "Question",
       messageIdHeader: "<message-1@example.com>",
       references: "<earlier@example.com>",
