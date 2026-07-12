@@ -1,0 +1,26 @@
+{
+  "id": "gmail",
+  "name": "Gmail",
+  "description": "OpenClaw communication channel backed by Gmail threads",
+  "activation": {
+    "onStartup": false
+  },
+  "channels": ["gmail"],
+  "channelEnvVars": {
+    "gmail": ["GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "GMAIL_REFRESH_TOKEN"]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "channelConfigs": {
+    "gmail": {
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    }
+  }
+}

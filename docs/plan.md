@@ -162,11 +162,10 @@ Before closing `gmail-883`:
 
 ## Risks and Mitigations
 
-| Risk | Impact | Mitigation |
-| --- | --- | --- |
-| OpenClaw API changes before `2026.7.2` release | Build or runtime load fails | Pin the development SHA in docs and run inspection against OpenClaw `main` |
+| Risk                                                | Impact                                                     | Mitigation                                                                                              |
+| --------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| OpenClaw API changes before `2026.7.2` release      | Build or runtime load fails                                | Pin the development SHA in docs and run inspection against OpenClaw `main`                              |
 | Gmail assigns a thread ID after a new outbound send | Outbound-origin session may start with a provisional route | Return the canonical thread ID in the receipt and test host reconciliation before claiming full support |
-| Restricted Gmail scope requires verification | Public OAuth app setup takes additional work | Document operator-owned OAuth clients and scope classification |
-| Duplicate unread polling after a crash | One email may dispatch more than once | Use in-process dedupe for concurrency and track durable History API cursors as a follow-up |
-| Email content contains prompt injection | Agent may act on hostile instructions | Treat bodies as user input and rely on OpenClaw permissions; never elevate authority from email content |
-
+| Restricted Gmail scope requires verification        | Public OAuth app setup takes additional work               | Document operator-owned OAuth clients and scope classification                                          |
+| Duplicate unread polling after a crash              | One email may dispatch more than once                      | Use in-process dedupe for concurrency and track durable History API cursors as a follow-up              |
+| Email content contains prompt injection             | Agent may act on hostile instructions                      | Treat bodies as user input and rely on OpenClaw permissions; never elevate authority from email content |

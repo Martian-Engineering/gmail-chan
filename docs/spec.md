@@ -83,17 +83,29 @@ not normalize because an email local part can have a similar shape.
         work: {
           email: "agent@example.com",
           oauth: {
-            clientId: { source: "env", provider: "default", id: "GMAIL_CLIENT_ID" },
-            clientSecret: { source: "env", provider: "default", id: "GMAIL_CLIENT_SECRET" },
-            refreshToken: { source: "env", provider: "default", id: "GMAIL_REFRESH_TOKEN" }
+            clientId: {
+              source: "env",
+              provider: "default",
+              id: "GMAIL_CLIENT_ID",
+            },
+            clientSecret: {
+              source: "env",
+              provider: "default",
+              id: "GMAIL_CLIENT_SECRET",
+            },
+            refreshToken: {
+              source: "env",
+              provider: "default",
+              id: "GMAIL_REFRESH_TOKEN",
+            },
           },
           allowFrom: ["person@example.com", "@martian.engineering"],
           allowTo: ["person@example.com", "@martian.engineering"],
-          pollIntervalSeconds: 30
-        }
-      }
-    }
-  }
+          pollIntervalSeconds: 30,
+        },
+      },
+    },
+  },
 }
 ```
 
@@ -128,7 +140,10 @@ separate.
 
 ```typescript
 /** Returns whether a normalized email address is admitted by one policy list. */
-export function isAddressAllowed(address: string, entries: readonly string[]): boolean {
+export function isAddressAllowed(
+  address: string,
+  entries: readonly string[],
+): boolean {
   return entries.some((entry) => matchesAddressPolicy(address, entry));
 }
 ```
@@ -196,4 +211,3 @@ Never:
 - Gmail History API and push notifications
 - Full thread-history context
 - Proven session reconciliation for outbound-originated Gmail threads
-
