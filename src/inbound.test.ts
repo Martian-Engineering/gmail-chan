@@ -361,4 +361,34 @@ describe("handleGmailInbound", () => {
       }),
     );
   });
+
+  it("reports skipped files instead of dispatching an empty attachment-only turn", async () => {
+    const { runtime, buildContext } = createRuntime();
+    const base = gmailMessage("message-1", "thread-1", "person@example.com");
+    const attached = {
+      ...base,
+      payload: {
+        mimeType: "application/pdf",
+        filename: "oversized.pdf",
+        headers: base.payload.headers,
+        body: { attachmentId: "attachment-1", size: 11 * 1024 * 1024 },
+      },
+    };
+
+    await handleGmailInbound({
+      account,
+      cfg,
+      message: attached,
+      runtime,
+      client: { getAttachmentData: vi.fn() } as never,
+    });
+
+    expect(buildContext).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.objectContaining({
+          bodyForAgent: expect.stringContaining("attachment unavailable"),
+        }),
+      }),
+    );
+  });
 });

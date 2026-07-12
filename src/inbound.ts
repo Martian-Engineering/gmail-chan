@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/channel-core";
+import { formatInboundMediaUnavailableText } from "openclaw/plugin-sdk/channel-inbound";
 import type { PluginRuntime } from "openclaw/plugin-sdk/runtime-store";
 import type { GmailCoreConfig, ResolvedGmailAccount } from "./accounts.js";
 import type { GmailClient } from "./gmail-client.js";
@@ -32,11 +33,13 @@ async function materializeAttachments(params: {
     messageId: string;
   }> = [];
   let totalBytes = 0;
+  let unavailableCount = 0;
   for (const attachment of params.message.attachments) {
     if (
       (attachment.size ?? 0) > MAX_GMAIL_ATTACHMENT_BYTES ||
       totalBytes + (attachment.size ?? 0) > MAX_GMAIL_TOTAL_ATTACHMENT_BYTES
     ) {
+      unavailableCount += 1;
       continue;
     }
     const data = attachment.data
@@ -56,6 +59,7 @@ async function materializeAttachments(params: {
       data.byteLength > MAX_GMAIL_ATTACHMENT_BYTES ||
       totalBytes + data.byteLength > MAX_GMAIL_TOTAL_ATTACHMENT_BYTES
     ) {
+      unavailableCount += 1;
       continue;
     }
     totalBytes += data.byteLength;
@@ -81,7 +85,7 @@ async function materializeAttachments(params: {
       messageId: params.message.id,
     });
   }
-  return media;
+  return { media, unavailableCount };
 }
 
 /** Admits and dispatches one validated Gmail message through OpenClaw. */
@@ -122,11 +126,18 @@ export async function handleGmailInbound(params: {
   } catch {
     return "ignored";
   }
-  const media = await materializeAttachments({
+  const { media, unavailableCount } = await materializeAttachments({
     client: params.client,
     message,
     runtime: params.runtime,
   });
+  const bodyForAgent =
+    unavailableCount > 0
+      ? formatInboundMediaUnavailableText({
+          body: message.text,
+          notice: `[gmail ${unavailableCount === 1 ? "attachment" : `${unavailableCount} attachments`} unavailable]`,
+        })
+      : message.text;
 
   // A Gmail thread is a channel peer so DM scope cannot merge distinct threads.
   const target = buildGmailThreadTarget(message.threadId);
@@ -189,9 +200,9 @@ export async function handleGmailInbound(params: {
       },
       message: {
         inboundEventKind: "user_request",
-        body: message.text,
-        rawBody: message.text,
-        bodyForAgent: message.text,
+        body: bodyForAgent,
+        rawBody: bodyForAgent,
+        bodyForAgent,
         commandBody: message.text,
         senderLabel: message.senderName ?? message.senderEmail,
       },
