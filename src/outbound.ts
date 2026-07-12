@@ -20,7 +20,17 @@ async function resolveReplySource(
   account: ResolvedGmailAccount,
   client: GmailClient,
   threadId: string,
+  replyToId?: string,
 ): Promise<ParsedGmailMessage> {
+  if (replyToId) {
+    const source = parseGmailMessage(await client.getMessage(replyToId));
+    if (source.threadId !== threadId || source.senderEmail === account.email) {
+      throw new Error(
+        `Gmail reply source "${replyToId}" does not belong to thread "${threadId}"`,
+      );
+    }
+    return source;
+  }
   const thread = await client.getThread(threadId);
   for (const message of [...thread.messages].reverse()) {
     try {
@@ -51,6 +61,7 @@ export async function sendGmailText(params: {
   client: GmailClient;
   target: string;
   text: string;
+  replyToId?: string;
 }): Promise<{ messageId: string; threadId: string }> {
   const target = parseGmailTarget(params.target);
   if (!target) {
@@ -75,6 +86,7 @@ export async function sendGmailText(params: {
     params.account,
     params.client,
     target.threadId,
+    params.replyToId,
   );
   if (!isAddressAllowed(source.senderEmail, params.account.allowTo)) {
     throw new Error(`Gmail recipient "${source.senderEmail}" is not allowed`);

@@ -19,37 +19,38 @@ const account: ResolvedGmailAccount = {
 
 function createClient(): {
   client: GmailClient;
+  getMessage: ReturnType<typeof vi.fn>;
   sendMessage: ReturnType<typeof vi.fn>;
 } {
   const sendMessage = vi.fn(async () => ({
     id: "sent-1",
     threadId: "thread-1",
   }));
+  const sourceMessage = {
+    id: "message-1",
+    threadId: "thread-1",
+    payload: {
+      mimeType: "text/plain",
+      headers: [
+        { name: "From", value: "Person <person@example.com>" },
+        { name: "Subject", value: "Question" },
+        { name: "Message-ID", value: "<message-1@example.com>" },
+      ],
+      body: { data: Buffer.from("Question body").toString("base64url") },
+    },
+  };
+  const getMessage = vi.fn(async () => sourceMessage);
   const api: GmailApi = {
     listMessages: vi.fn(async () => ({ messages: [] })),
-    getMessage: vi.fn(),
+    getMessage,
     getThread: vi.fn(async () => ({
       id: "thread-1",
-      messages: [
-        {
-          id: "message-1",
-          threadId: "thread-1",
-          payload: {
-            mimeType: "text/plain",
-            headers: [
-              { name: "From", value: "Person <person@example.com>" },
-              { name: "Subject", value: "Question" },
-              { name: "Message-ID", value: "<message-1@example.com>" },
-            ],
-            body: { data: Buffer.from("Question body").toString("base64url") },
-          },
-        },
-      ],
+      messages: [sourceMessage],
     })),
     markMessageRead: vi.fn(),
     sendMessage,
   };
-  return { client: new GmailClient(api), sendMessage };
+  return { client: new GmailClient(api), getMessage, sendMessage };
 }
 
 describe("sendGmailText", () => {
@@ -74,6 +75,20 @@ describe("sendGmailText", () => {
     expect(decoded).toContain("To: person@example.com\r\n");
     expect(decoded).toContain("Subject: Re: Question\r\n");
     expect(decoded).toContain("In-Reply-To: <message-1@example.com>\r\n");
+  });
+
+  it("uses the exact source message when OpenClaw supplies replyToId", async () => {
+    const { client, getMessage } = createClient();
+
+    await sendGmailText({
+      account,
+      client,
+      target: "thread:thread-1",
+      text: "Answer",
+      replyToId: "message-1",
+    });
+
+    expect(getMessage).toHaveBeenCalledWith("message-1");
   });
 
   it("denies a new outbound thread outside allowTo", async () => {

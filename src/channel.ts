@@ -44,6 +44,7 @@ const gmailMessageAdapter = defineChannelMessageAdapter({
         client: createGmailClient(account),
         target: ctx.to,
         text: ctx.text,
+        ...(ctx.replyToId ? { replyToId: ctx.replyToId } : {}),
       });
       const replyToId = ctx.replyToId ?? undefined;
       return {
@@ -159,7 +160,7 @@ export const gmailPlugin: ChannelPlugin<ResolvedGmailAccount> =
       base: { deliveryMode: "direct" },
       attachedResults: {
         channel: GMAIL_CHANNEL_ID,
-        sendText: async ({ cfg, to, text, accountId }) => {
+        sendText: async ({ cfg, to, text, accountId, replyToId }) => {
           const account = resolveGmailAccount({
             cfg: cfg as GmailCoreConfig,
             ...(accountId !== undefined ? { accountId } : {}),
@@ -169,6 +170,7 @@ export const gmailPlugin: ChannelPlugin<ResolvedGmailAccount> =
             client: createGmailClient(account),
             target: to,
             text,
+            ...(replyToId ? { replyToId } : {}),
           });
           return { messageId: result.messageId };
         },
