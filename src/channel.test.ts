@@ -66,12 +66,15 @@ describe("gmailPlugin config", () => {
     expect(route).toMatchObject({ recipientSessionExact: false });
   });
 
-  it("exposes gateway and durable text message adapters", () => {
+  it("exposes gateway and durable text and attachment adapters", () => {
     expect(gmailPlugin.gateway?.startAccount).toBeTypeOf("function");
     expect(gmailPlugin.message?.durableFinal?.capabilities).toMatchObject({
       text: true,
+      media: true,
       replyTo: true,
       thread: true,
     });
+    expect(gmailPlugin.message?.send?.media).toBeTypeOf("function");
+    expect(gmailPlugin.outbound?.sendMedia).toBeTypeOf("function");
   });
 });

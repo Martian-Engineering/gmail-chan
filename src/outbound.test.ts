@@ -47,6 +47,7 @@ function createClient(): {
       id: "thread-1",
       messages: [sourceMessage],
     })),
+    getAttachment: vi.fn(),
     markMessageRead: vi.fn(),
     sendMessage,
   };

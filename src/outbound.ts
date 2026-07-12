@@ -4,6 +4,7 @@ import {
   buildRawEmail,
   parseGmailMessage,
   resolveGmailReplyRecipients,
+  type RawEmailAttachment,
   type ParsedGmailMessage,
 } from "./message.js";
 import { isAddressAllowed } from "./policy.js";
@@ -63,6 +64,7 @@ export async function sendGmailText(params: {
   target: string;
   text: string;
   replyToId?: string;
+  attachments?: RawEmailAttachment[];
 }): Promise<{ messageId: string; threadId: string }> {
   const target = parseGmailTarget(params.target);
   if (!target) {
@@ -78,6 +80,7 @@ export async function sendGmailText(params: {
       to: target.email,
       subject: "OpenClaw message",
       text: params.text,
+      ...(params.attachments ? { attachments: params.attachments } : {}),
     });
     return await params.client.sendRawMessage(raw);
   }
@@ -111,6 +114,7 @@ export async function sendGmailText(params: {
     cc: recipients.cc,
     subject: buildReplySubject(source.subject),
     text: params.text,
+    ...(params.attachments ? { attachments: params.attachments } : {}),
     inReplyTo: source.messageIdHeader,
     ...(references ? { references } : {}),
   });

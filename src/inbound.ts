@@ -1,8 +1,12 @@
+import { Buffer } from "node:buffer";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/channel-core";
 import type { PluginRuntime } from "openclaw/plugin-sdk/runtime-store";
 import type { GmailCoreConfig, ResolvedGmailAccount } from "./accounts.js";
-import type { GmailApiMessage } from "./message.js";
+import type { GmailClient } from "./gmail-client.js";
+import type { GmailApiMessage, ParsedGmailMessage } from "./message.js";
 import {
+  MAX_GMAIL_ATTACHMENT_BYTES,
+  MAX_GMAIL_TOTAL_ATTACHMENT_BYTES,
   parseGmailMessage,
   parseGmailMessageEnvelope,
   resolveGmailReplyRecipients,
@@ -16,12 +20,77 @@ import {
 
 export type GmailInboundDisposition = "dispatched" | "ignored";
 
+async function materializeAttachments(params: {
+  client: GmailClient | undefined;
+  message: ParsedGmailMessage;
+  runtime: PluginRuntime;
+}) {
+  const media: Array<{
+    path: string;
+    contentType?: string;
+    kind: "image" | "video" | "audio" | "document";
+    messageId: string;
+  }> = [];
+  let totalBytes = 0;
+  for (const attachment of params.message.attachments) {
+    if (
+      (attachment.size ?? 0) > MAX_GMAIL_ATTACHMENT_BYTES ||
+      totalBytes + (attachment.size ?? 0) > MAX_GMAIL_TOTAL_ATTACHMENT_BYTES
+    ) {
+      continue;
+    }
+    const data = attachment.data
+      ? Buffer.from(attachment.data, "base64url")
+      : attachment.attachmentId && params.client
+        ? await params.client.getAttachmentData(
+            params.message.id,
+            attachment.attachmentId,
+            Math.min(
+              MAX_GMAIL_ATTACHMENT_BYTES,
+              MAX_GMAIL_TOTAL_ATTACHMENT_BYTES - totalBytes,
+            ),
+          )
+        : undefined;
+    if (
+      !data ||
+      data.byteLength > MAX_GMAIL_ATTACHMENT_BYTES ||
+      totalBytes + data.byteLength > MAX_GMAIL_TOTAL_ATTACHMENT_BYTES
+    ) {
+      continue;
+    }
+    totalBytes += data.byteLength;
+    const saved = await params.runtime.channel.media.saveMediaBuffer(
+      data,
+      attachment.mimeType,
+      "inbound",
+      MAX_GMAIL_ATTACHMENT_BYTES,
+      attachment.filename,
+    );
+    const contentType = saved.contentType ?? attachment.mimeType;
+    const kind = contentType.startsWith("image/")
+      ? "image"
+      : contentType.startsWith("video/")
+        ? "video"
+        : contentType.startsWith("audio/")
+          ? "audio"
+          : "document";
+    media.push({
+      path: saved.path,
+      ...(contentType ? { contentType } : {}),
+      kind,
+      messageId: params.message.id,
+    });
+  }
+  return media;
+}
+
 /** Admits and dispatches one validated Gmail message through OpenClaw. */
 export async function handleGmailInbound(params: {
   account: ResolvedGmailAccount;
   cfg: GmailCoreConfig;
   message: GmailApiMessage;
   runtime: PluginRuntime;
+  client?: GmailClient;
 }): Promise<GmailInboundDisposition> {
   // Apply sender policy before decoding untrusted MIME content or invoking an
   // agent. A sender must be eligible for both admission and the reply path.
@@ -43,6 +112,11 @@ export async function handleGmailInbound(params: {
     return "ignored";
   }
   const message = parseGmailMessage(params.message);
+  const media = await materializeAttachments({
+    client: params.client,
+    message,
+    runtime: params.runtime,
+  });
 
   // A Gmail thread is a channel peer so DM scope cannot merge distinct threads.
   const target = buildGmailThreadTarget(message.threadId);
@@ -111,6 +185,7 @@ export async function handleGmailInbound(params: {
         commandBody: message.text,
         senderLabel: message.senderName ?? message.senderEmail,
       },
+      ...(media.length > 0 ? { media } : {}),
       ...(pendingOutbound
         ? {
             supplemental: {

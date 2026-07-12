@@ -7,6 +7,7 @@ import {
   createMessageReceiptFromOutboundResults,
   defineChannelMessageAdapter,
 } from "openclaw/plugin-sdk/channel-outbound";
+import { loadOutboundMediaFromUrl } from "openclaw/plugin-sdk/outbound-media";
 import {
   listGmailAccountIds,
   resolveDefaultGmailAccountId,
@@ -21,8 +22,37 @@ import { sendGmailText } from "./outbound.js";
 import { getGmailRuntime } from "./runtime.js";
 import { normalizeGmailTarget, parseGmailTarget } from "./target.js";
 import { recordOutboundThreadContext } from "./thread-context.js";
+import {
+  MAX_GMAIL_ATTACHMENT_BYTES,
+  type RawEmailAttachment,
+} from "./message.js";
 
 export const GMAIL_CHANNEL_ID = "gmail" as const;
+
+type GmailOutboundMediaContext = {
+  mediaUrl: string;
+  mediaAccess?: NonNullable<
+    Parameters<typeof loadOutboundMediaFromUrl>[1]
+  >["mediaAccess"];
+  mediaLocalRoots?: readonly string[];
+  mediaReadFile?: (filePath: string) => Promise<Buffer>;
+};
+
+async function loadGmailOutboundAttachment(
+  ctx: GmailOutboundMediaContext,
+): Promise<RawEmailAttachment> {
+  const media = await loadOutboundMediaFromUrl(ctx.mediaUrl, {
+    maxBytes: MAX_GMAIL_ATTACHMENT_BYTES,
+    ...(ctx.mediaAccess ? { mediaAccess: ctx.mediaAccess } : {}),
+    ...(ctx.mediaLocalRoots ? { mediaLocalRoots: ctx.mediaLocalRoots } : {}),
+    ...(ctx.mediaReadFile ? { mediaReadFile: ctx.mediaReadFile } : {}),
+  });
+  return {
+    filename: media.fileName ?? "attachment.bin",
+    ...(media.contentType ? { contentType: media.contentType } : {}),
+    data: media.buffer,
+  };
+}
 
 async function rememberOutboundThread(params: {
   account: ResolvedGmailAccount;
@@ -55,6 +85,7 @@ const gmailMessageAdapter = defineChannelMessageAdapter({
   durableFinal: {
     capabilities: {
       text: true,
+      media: true,
       replyTo: true,
       thread: true,
       messageSendingHooks: true,
@@ -87,6 +118,37 @@ const gmailMessageAdapter = defineChannelMessageAdapter({
           threadId: result.threadId,
           ...(replyToId ? { replyToId } : {}),
           kind: "text",
+        }),
+      };
+    },
+    media: async (ctx) => {
+      const account = resolveGmailAccount({
+        cfg: ctx.cfg as GmailCoreConfig,
+        ...(ctx.accountId !== undefined ? { accountId: ctx.accountId } : {}),
+      });
+      const attachment = await loadGmailOutboundAttachment(ctx);
+      const result = await sendGmailText({
+        account,
+        client: createGmailClient(account),
+        target: ctx.to,
+        text: ctx.text,
+        attachments: [attachment],
+        ...(ctx.replyToId ? { replyToId: ctx.replyToId } : {}),
+      });
+      await rememberOutboundThread({
+        account,
+        target: ctx.to,
+        text: ctx.text || `[Outbound Gmail attachment: ${attachment.filename}]`,
+        threadId: result.threadId,
+      });
+      const replyToId = ctx.replyToId ?? undefined;
+      return {
+        messageId: result.messageId,
+        receipt: createMessageReceiptFromOutboundResults({
+          results: [{ channel: GMAIL_CHANNEL_ID, messageId: result.messageId }],
+          threadId: result.threadId,
+          ...(replyToId ? { replyToId } : {}),
+          kind: "media",
         }),
       };
     },
@@ -208,6 +270,46 @@ export const gmailPlugin: ChannelPlugin<ResolvedGmailAccount> =
             account,
             target: to,
             text,
+            threadId: result.threadId,
+          });
+          return { messageId: result.messageId };
+        },
+        sendMedia: async ({
+          cfg,
+          to,
+          text,
+          mediaUrl,
+          mediaAccess,
+          mediaLocalRoots,
+          mediaReadFile,
+          accountId,
+          replyToId,
+        }) => {
+          if (!mediaUrl) {
+            throw new Error("Gmail attachment send requires a media URL");
+          }
+          const account = resolveGmailAccount({
+            cfg: cfg as GmailCoreConfig,
+            ...(accountId !== undefined ? { accountId } : {}),
+          });
+          const attachment = await loadGmailOutboundAttachment({
+            mediaUrl,
+            ...(mediaAccess ? { mediaAccess } : {}),
+            ...(mediaLocalRoots ? { mediaLocalRoots } : {}),
+            ...(mediaReadFile ? { mediaReadFile } : {}),
+          });
+          const result = await sendGmailText({
+            account,
+            client: createGmailClient(account),
+            target: to,
+            text,
+            attachments: [attachment],
+            ...(replyToId ? { replyToId } : {}),
+          });
+          await rememberOutboundThread({
+            account,
+            target: to,
+            text: text || `[Outbound Gmail attachment: ${attachment.filename}]`,
             threadId: result.threadId,
           });
           return { messageId: result.messageId };

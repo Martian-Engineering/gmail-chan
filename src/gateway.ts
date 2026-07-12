@@ -34,6 +34,7 @@ export async function pollGmailOnce(params: {
         cfg: params.cfg,
         message,
         runtime: params.runtime,
+        client: params.client,
       });
       await params.client.markMessageRead(messageId);
     } finally {

@@ -1,5 +1,6 @@
 import { auth, gmail } from "@googleapis/gmail";
 import { z } from "zod";
+import { Buffer } from "node:buffer";
 import type { ResolvedGmailAccount } from "./accounts.js";
 import { GmailApiMessageSchema, type GmailApiMessage } from "./message.js";
 
@@ -20,10 +21,16 @@ const SentMessageSchema = z.object({
   threadId: z.string().min(1),
 });
 
+const AttachmentBodySchema = z.object({
+  data: z.string().max(14 * 1024 * 1024),
+  size: z.number().int().nonnegative().optional(),
+});
+
 export type GmailApi = {
   listMessages: () => Promise<unknown>;
   getMessage: (messageId: string) => Promise<unknown>;
   getThread: (threadId: string) => Promise<unknown>;
+  getAttachment: (messageId: string, attachmentId: string) => Promise<unknown>;
   markMessageRead: (messageId: string) => Promise<void>;
   sendMessage: (input: { raw: string; threadId?: string }) => Promise<unknown>;
 };
@@ -69,6 +76,30 @@ export class GmailClient {
       throw new Error("Invalid Gmail thread response", { cause: result.error });
     }
     return result.data;
+  }
+
+  /** Downloads one Gmail attachment and enforces its decoded byte limit. */
+  public async getAttachmentData(
+    messageId: string,
+    attachmentId: string,
+    maxBytes: number,
+  ): Promise<Buffer> {
+    const result = AttachmentBodySchema.safeParse(
+      await this.#api.getAttachment(messageId, attachmentId),
+    );
+    if (!result.success) {
+      throw new Error("Invalid Gmail attachment response", {
+        cause: result.error,
+      });
+    }
+    if (result.data.size !== undefined && result.data.size > maxBytes) {
+      throw new Error(`Gmail attachment exceeds ${maxBytes} bytes`);
+    }
+    const buffer = Buffer.from(result.data.data, "base64url");
+    if (buffer.byteLength > maxBytes) {
+      throw new Error(`Gmail attachment exceeds ${maxBytes} bytes`);
+    }
+    return buffer;
   }
 
   /** Removes the unread label after the channel has handled a message. */
@@ -124,6 +155,14 @@ export function createGoogleGmailApi(account: ResolvedGmailAccount): GmailApi {
         userId: "me",
         id: threadId,
         format: "full",
+      });
+      return response.data;
+    },
+    async getAttachment(messageId, attachmentId) {
+      const response = await service.users.messages.attachments.get({
+        userId: "me",
+        messageId,
+        id: attachmentId,
       });
       return response.data;
     },

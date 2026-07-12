@@ -6,6 +6,10 @@ function createApi(overrides: Partial<GmailApi> = {}): GmailApi {
     listMessages: vi.fn(async () => ({ messages: [] })),
     getMessage: vi.fn(async () => ({ id: "message-1", threadId: "thread-1" })),
     getThread: vi.fn(async () => ({ id: "thread-1", messages: [] })),
+    getAttachment: vi.fn(async () => ({
+      data: Buffer.from("attachment").toString("base64url"),
+      size: 10,
+    })),
     markMessageRead: vi.fn(async () => undefined),
     sendMessage: vi.fn(async () => ({ id: "sent-1", threadId: "thread-1" })),
     ...overrides,
@@ -68,5 +72,16 @@ describe("GmailClient", () => {
       raw: "encoded",
       threadId: "thread-1",
     });
+  });
+
+  it("downloads and bounds decoded Gmail attachment bytes", async () => {
+    const client = new GmailClient(createApi());
+
+    await expect(
+      client.getAttachmentData("message-1", "attachment-1", 10),
+    ).resolves.toEqual(Buffer.from("attachment"));
+    await expect(
+      client.getAttachmentData("message-1", "attachment-1", 9),
+    ).rejects.toThrow("exceeds");
   });
 });

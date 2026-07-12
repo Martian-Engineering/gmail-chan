@@ -1,8 +1,12 @@
 import { Buffer } from "node:buffer";
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { normalizeEmailAddress } from "./target.js";
 
 export const DEFAULT_MAX_MESSAGE_BODY_BYTES = 128 * 1024;
+export const MAX_GMAIL_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+export const MAX_GMAIL_TOTAL_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+export const MAX_GMAIL_ATTACHMENTS = 10;
 const MAX_HEADER_LENGTH = 32 * 1024;
 const MAX_PARTS = 100;
 const MAX_PART_DEPTH = 10;
@@ -13,8 +17,11 @@ const GmailHeaderSchema = z.object({
 });
 
 const GmailBodySchema = z.object({
-  data: z.string().optional(),
-  attachmentId: z.string().optional(),
+  data: z
+    .string()
+    .max(14 * 1024 * 1024)
+    .optional(),
+  attachmentId: z.string().max(1024).optional(),
   size: z.number().int().nonnegative().optional(),
 });
 
@@ -28,8 +35,8 @@ export type GmailMessagePart = {
 
 const GmailMessagePartSchema: z.ZodType<GmailMessagePart> = z.lazy(() =>
   z.object({
-    mimeType: z.string().optional().nullable(),
-    filename: z.string().optional().nullable(),
+    mimeType: z.string().max(255).optional().nullable(),
+    filename: z.string().max(512).optional().nullable(),
     headers: z.array(GmailHeaderSchema).optional().nullable(),
     body: GmailBodySchema.optional().nullable(),
     parts: z.array(GmailMessagePartSchema).optional().nullable(),
@@ -79,7 +86,16 @@ export type ParsedGmailMessage = {
   messageIdHeader?: string;
   references?: string;
   text: string;
+  attachments: GmailAttachmentDescriptor[];
   timestampMs?: number;
+};
+
+export type GmailAttachmentDescriptor = {
+  filename: string;
+  mimeType: string;
+  size?: number;
+  attachmentId?: string;
+  data?: string;
 };
 
 export type GmailReplyRecipients = { to: string[]; cc: string[] };
@@ -137,6 +153,42 @@ function findBodyCandidates(part: GmailMessagePart): BodyCandidates {
 
   visit(part, 0);
   return candidates;
+}
+
+/** Collects a bounded set of filename-bearing MIME attachment parts. */
+function findAttachmentCandidates(
+  part: GmailMessagePart,
+): GmailAttachmentDescriptor[] {
+  const attachments: GmailAttachmentDescriptor[] = [];
+  let visited = 0;
+  function visit(current: GmailMessagePart, depth: number): void {
+    visited += 1;
+    if (visited > MAX_PARTS || depth > MAX_PART_DEPTH) {
+      throw new Error("Gmail MIME structure exceeds supported limits");
+    }
+    const filename = current.filename?.trim();
+    if (
+      filename &&
+      current.body &&
+      (current.body.attachmentId || current.body.data) &&
+      attachments.length < MAX_GMAIL_ATTACHMENTS
+    ) {
+      attachments.push({
+        filename,
+        mimeType: current.mimeType?.trim() || "application/octet-stream",
+        ...(current.body.size !== undefined ? { size: current.body.size } : {}),
+        ...(current.body.attachmentId
+          ? { attachmentId: current.body.attachmentId }
+          : {}),
+        ...(current.body.data ? { data: current.body.data } : {}),
+      });
+    }
+    for (const child of current.parts ?? []) {
+      visit(child, depth + 1);
+    }
+  }
+  visit(part, 0);
+  return attachments;
 }
 
 function decodeBody(data: string, maxBytes: number): string {
@@ -304,11 +356,12 @@ export function parseGmailMessage(
 
   // Prefer the sender's plain-text alternative. HTML is treated only as text.
   const bodies = findBodyCandidates(message.payload);
+  const attachments = findAttachmentCandidates(message.payload);
   const bodyData = bodies.plain ?? bodies.html;
-  if (!bodyData) {
+  if (!bodyData && attachments.length === 0) {
     throw new Error("Gmail message has no supported text body");
   }
-  const decoded = decodeBody(bodyData, maxBodyBytes);
+  const decoded = bodyData ? decodeBody(bodyData, maxBodyBytes) : "";
   const envelope = parseGmailMessageEnvelope(message);
   const messageIdHeader = getHeader(message.payload, "Message-ID");
   const references = getHeader(message.payload, "References");
@@ -324,6 +377,7 @@ export function parseGmailMessage(
     ...(messageIdHeader ? { messageIdHeader } : {}),
     ...(references ? { references } : {}),
     text: bodies.plain ? decoded.trim() : htmlToText(decoded),
+    attachments,
     ...(envelope.timestampMs !== undefined
       ? { timestampMs: envelope.timestampMs }
       : {}),
@@ -361,6 +415,13 @@ export type RawEmailInput = {
   text: string;
   inReplyTo?: string;
   references?: string;
+  attachments?: RawEmailAttachment[];
+};
+
+export type RawEmailAttachment = {
+  filename: string;
+  contentType?: string;
+  data: Buffer;
 };
 
 function normalizeRecipients(
@@ -377,6 +438,32 @@ function normalizeRecipients(
   return [...new Set(recipients as string[])];
 }
 
+function sanitizeAttachmentFilename(value: string): string {
+  const leaf = value.trim().split(/[\\/]/u).at(-1) ?? "";
+  const sanitized = leaf.replace(/[^A-Za-z0-9._ -]/gu, "_").slice(0, 255);
+  if (!sanitized || sanitized === "." || sanitized === "..") {
+    throw new Error("Invalid attachment filename");
+  }
+  return sanitized;
+}
+
+function normalizeAttachmentContentType(value?: string): string {
+  const contentType = value?.trim() || "application/octet-stream";
+  if (!/^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/u.test(contentType)) {
+    throw new Error("Invalid attachment content type");
+  }
+  return contentType;
+}
+
+function wrapBase64(buffer: Buffer): string {
+  return (
+    buffer
+      .toString("base64")
+      .match(/.{1,76}/gu)
+      ?.join("\r\n") ?? ""
+  );
+}
+
 /** Builds the base64url RFC 2822 payload required by Gmail messages.send. */
 export function buildRawEmail(input: RawEmailInput): string {
   const from = normalizeEmailAddress(requireSafeHeader("From", input.from));
@@ -390,14 +477,25 @@ export function buildRawEmail(input: RawEmailInput): string {
       `Outbound email body exceeds ${DEFAULT_MAX_MESSAGE_BODY_BYTES} bytes`,
     );
   }
+  const attachments = input.attachments ?? [];
+  if (
+    attachments.length > MAX_GMAIL_ATTACHMENTS ||
+    attachments.some(
+      (attachment) => attachment.data.byteLength > MAX_GMAIL_ATTACHMENT_BYTES,
+    ) ||
+    attachments.reduce(
+      (total, attachment) => total + attachment.data.byteLength,
+      0,
+    ) > MAX_GMAIL_TOTAL_ATTACHMENT_BYTES
+  ) {
+    throw new Error("Outbound Gmail attachments exceed supported limits");
+  }
 
   const headers = [
     `From: ${from}`,
     `To: ${to.join(", ")}`,
     `Subject: ${encodeSubject(input.subject)}`,
     "MIME-Version: 1.0",
-    'Content-Type: text/plain; charset="UTF-8"',
-    "Content-Transfer-Encoding: 8bit",
   ];
   if (cc.length > 0) {
     headers.splice(2, 0, `Cc: ${cc.join(", ")}`);
@@ -412,6 +510,39 @@ export function buildRawEmail(input: RawEmailInput): string {
       `References: ${requireSafeHeader("References", input.references, MAX_HEADER_LENGTH)}`,
     );
   }
-  const raw = `${headers.join("\r\n")}\r\n\r\n${normalizeCrLf(input.text)}`;
+  if (attachments.length === 0) {
+    headers.push(
+      'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: 8bit",
+    );
+  }
+  const body = (() => {
+    if (attachments.length === 0) {
+      return normalizeCrLf(input.text);
+    }
+    const boundary = `gmail-chan-${randomBytes(12).toString("hex")}`;
+    headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+    const parts = [
+      `--${boundary}`,
+      'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: 8bit",
+      "",
+      normalizeCrLf(input.text),
+    ];
+    for (const attachment of attachments) {
+      const filename = sanitizeAttachmentFilename(attachment.filename);
+      parts.push(
+        `--${boundary}`,
+        `Content-Type: ${normalizeAttachmentContentType(attachment.contentType)}`,
+        `Content-Disposition: attachment; filename="${filename}"`,
+        "Content-Transfer-Encoding: base64",
+        "",
+        wrapBase64(attachment.data),
+      );
+    }
+    parts.push(`--${boundary}--`);
+    return parts.join("\r\n");
+  })();
+  const raw = `${headers.join("\r\n")}\r\n\r\n${body}`;
   return Buffer.from(raw, "utf8").toString("base64url");
 }

@@ -41,6 +41,7 @@ function createClient(): {
     })),
     getMessage: vi.fn(async () => message()),
     getThread: vi.fn(),
+    getAttachment: vi.fn(),
     markMessageRead,
     sendMessage: vi.fn(),
   };

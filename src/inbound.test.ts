@@ -84,6 +84,14 @@ function createRuntime(pendingText?: string) {
   const runtime = {
     state: { openKeyedStore: () => threadStore },
     channel: {
+      media: {
+        saveMediaBuffer: vi.fn(async () => ({
+          id: "saved-report.pdf",
+          path: "/tmp/saved-report.pdf",
+          size: 10,
+          contentType: "application/pdf",
+        })),
+      },
       routing: {
         resolveAgentRoute: ({ peer }: { peer: { id: string } }) => ({
           accountId: "work",
@@ -259,5 +267,51 @@ describe("handleGmailInbound", () => {
       handleGmailInbound({ account, cfg, message: unsupported, runtime }),
     ).resolves.toBe("ignored");
     expect(dispatchReply).not.toHaveBeenCalled();
+  });
+
+  it("downloads inbound attachments into managed OpenClaw media", async () => {
+    const { runtime, buildContext } = createRuntime();
+    const base = gmailMessage("message-1", "thread-1", "person@example.com");
+    const attached = {
+      ...base,
+      payload: {
+        ...base.payload,
+        mimeType: "multipart/mixed",
+        body: undefined,
+        parts: [
+          {
+            mimeType: "text/plain",
+            body: base.payload.body,
+          },
+          {
+            mimeType: "application/pdf",
+            filename: "report.pdf",
+            body: { attachmentId: "attachment-1", size: 10 },
+          },
+        ],
+      },
+    };
+    const client = {
+      getAttachmentData: vi.fn(async () => Buffer.from("attachment")),
+    };
+
+    await handleGmailInbound({
+      account,
+      cfg,
+      message: attached,
+      runtime,
+      client: client as never,
+    });
+
+    expect(buildContext).toHaveBeenCalledWith(
+      expect.objectContaining({
+        media: [
+          expect.objectContaining({
+            path: "/tmp/saved-report.pdf",
+            contentType: "application/pdf",
+          }),
+        ],
+      }),
+    );
   });
 });

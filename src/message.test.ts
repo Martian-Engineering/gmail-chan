@@ -86,6 +86,50 @@ describe("parseGmailMessage", () => {
       ),
     ).toThrow("body exceeds");
   });
+
+  it("extracts bounded external attachment metadata", () => {
+    const message = parseGmailMessage({
+      id: "message-4",
+      threadId: "thread-4",
+      payload: {
+        mimeType: "multipart/mixed",
+        headers: [{ name: "From", value: "person@example.com" }],
+        parts: [
+          { mimeType: "text/plain", body: { data: encodeBody("See file") } },
+          {
+            mimeType: "application/pdf",
+            filename: "report.pdf",
+            body: { attachmentId: "attachment-1", size: 1024 },
+          },
+        ],
+      },
+    });
+
+    expect(message.attachments).toEqual([
+      {
+        attachmentId: "attachment-1",
+        filename: "report.pdf",
+        mimeType: "application/pdf",
+        size: 1024,
+      },
+    ]);
+  });
+
+  it("accepts an attachment-only inbound message", () => {
+    const message = parseGmailMessage({
+      id: "message-5",
+      threadId: "thread-5",
+      payload: {
+        mimeType: "application/pdf",
+        filename: "report.pdf",
+        headers: [{ name: "From", value: "person@example.com" }],
+        body: { attachmentId: "attachment-1", size: 1024 },
+      },
+    });
+
+    expect(message.text).toBe("");
+    expect(message.attachments).toHaveLength(1);
+  });
 });
 
 describe("buildRawEmail", () => {
@@ -118,5 +162,26 @@ describe("buildRawEmail", () => {
         text: "Body",
       }),
     ).toThrow("header");
+  });
+
+  it("builds multipart MIME with a bounded attachment", () => {
+    const raw = buildRawEmail({
+      from: "agent@example.com",
+      to: "person@example.com",
+      subject: "Report",
+      text: "Attached",
+      attachments: [
+        {
+          filename: "report.txt",
+          contentType: "text/plain",
+          data: Buffer.from("report body"),
+        },
+      ],
+    });
+    const decoded = Buffer.from(raw, "base64url").toString("utf8");
+
+    expect(decoded).toContain('Content-Type: multipart/mixed; boundary="');
+    expect(decoded).toContain('filename="report.txt"');
+    expect(decoded).toContain(Buffer.from("report body").toString("base64"));
   });
 });
