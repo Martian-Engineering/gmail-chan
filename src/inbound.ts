@@ -94,7 +94,12 @@ export async function handleGmailInbound(params: {
 }): Promise<GmailInboundDisposition> {
   // Apply sender policy before decoding untrusted MIME content or invoking an
   // agent. A sender must be eligible for both admission and the reply path.
-  const envelope = parseGmailMessageEnvelope(params.message);
+  let envelope;
+  try {
+    envelope = parseGmailMessageEnvelope(params.message);
+  } catch {
+    return "ignored";
+  }
   const replyRecipients = resolveGmailReplyRecipients(
     envelope,
     params.account.email,
@@ -111,7 +116,12 @@ export async function handleGmailInbound(params: {
   ) {
     return "ignored";
   }
-  const message = parseGmailMessage(params.message);
+  let message;
+  try {
+    message = parseGmailMessage(params.message);
+  } catch {
+    return "ignored";
+  }
   const media = await materializeAttachments({
     client: params.client,
     message,
