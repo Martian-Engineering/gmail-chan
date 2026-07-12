@@ -40,3 +40,19 @@
 {"type":"close","timestamp":"2026-07-12T16:34:53.26207Z","issue_id":"gmail-883.5","payload":{}}
 {"type":"comment","timestamp":"2026-07-12T16:34:53.290442Z","issue_id":"gmail-883","payload":{"body":"First milestone complete. Enhancements for outbound session reconciliation, OAuth setup, attachments/reply-all, and push delivery remain tracked separately."}}
 {"type":"close","timestamp":"2026-07-12T16:34:53.317901Z","issue_id":"gmail-883","payload":{}}
+{"type":"create","timestamp":"2026-07-12T22:40:56.909585Z","issue_id":"gmail-54c","payload":{"description":"Deliver continuous Gmail/OpenClaw conversations regardless of which side starts the thread, including canonical per-thread session context, inbound and outbound attachments, reply-all recipient policy, documentation, and current-main runtime validation.","priority":"1","title":"Complete Gmail conversation loop","type":"epic"}}
+{"type":"create","timestamp":"2026-07-12T22:40:56.940563Z","issue_id":"gmail-17d","payload":{"description":"Add multi-turn integration coverage and operator documentation proving an allowlisted inbound sender can exchange repeated replies in one Gmail thread/session, and validate the packaged plugin against current OpenClaw main.","priority":"1","title":"Validate continuous Gmail conversation flow","type":"task"}}
+{"type":"update","timestamp":"2026-07-12T22:41:07.236803Z","issue_id":"gmail-92e","payload":{"description":"Replace provisional mailto session claims with canonical Gmail-thread context. Persist the initial outbound message by returned thread ID, project it into the first inbound reply's canonical thread session, retain it across dispatch retries, and prove two new threads to one address stay distinct."}}
+{"type":"rename","timestamp":"2026-07-12T22:41:07.236803Z","issue_id":"gmail-92e","payload":{"new_id":"gmail-54c.1"}}
+{"type":"dep_add","timestamp":"2026-07-12T22:41:07.236803Z","issue_id":"gmail-54c.1","payload":{"dep_type":"parent-child","depends_on":"gmail-54c"}}
+{"type":"update","timestamp":"2026-07-12T22:41:07.271091Z","issue_id":"gmail-178","payload":{"description":"Add bounded inbound attachment download/storage, outbound multipart attachments, and multi-recipient reply-all with independent allowTo checks for every Reply-To/To/Cc recipient. Cover MIME nesting, filename safety, size limits, self exclusion, deduplication, and unsupported attachment behavior.","priority":"1"}}
+{"type":"rename","timestamp":"2026-07-12T22:41:07.271091Z","issue_id":"gmail-178","payload":{"new_id":"gmail-54c.2"}}
+{"type":"dep_add","timestamp":"2026-07-12T22:41:07.271091Z","issue_id":"gmail-54c.2","payload":{"dep_type":"parent-child","depends_on":"gmail-54c"}}
+{"type":"rename","timestamp":"2026-07-12T22:41:07.309119Z","issue_id":"gmail-17d","payload":{"new_id":"gmail-54c.3"}}
+{"type":"dep_add","timestamp":"2026-07-12T22:41:07.309119Z","issue_id":"gmail-54c.3","payload":{"dep_type":"parent-child","depends_on":"gmail-54c"}}
+{"type":"dep_add","timestamp":"2026-07-12T22:41:07.347557Z","issue_id":"gmail-54c.2","payload":{"dep_type":"blocks","depends_on":"gmail-54c.1"}}
+{"type":"dep_add","timestamp":"2026-07-12T22:41:07.406362Z","issue_id":"gmail-54c.3","payload":{"dep_type":"blocks","depends_on":"gmail-54c.1"}}
+{"type":"dep_add","timestamp":"2026-07-12T22:41:07.443105Z","issue_id":"gmail-54c.3","payload":{"dep_type":"blocks","depends_on":"gmail-54c.2"}}
+{"type":"dep_add","timestamp":"2026-07-12T22:41:07.478819Z","issue_id":"gmail-54c","payload":{"dep_type":"blocks","depends_on":"gmail-54c.1"}}
+{"type":"dep_add","timestamp":"2026-07-12T22:41:07.518198Z","issue_id":"gmail-54c","payload":{"dep_type":"blocks","depends_on":"gmail-54c.2"}}
+{"type":"dep_add","timestamp":"2026-07-12T22:41:07.565294Z","issue_id":"gmail-54c","payload":{"dep_type":"blocks","depends_on":"gmail-54c.3"}}
